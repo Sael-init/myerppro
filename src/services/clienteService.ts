@@ -334,6 +334,21 @@ class ClienteService {
     },
   };
 
+  /**
+   * Resuelve un código ubidst a etiqueta legible "País, Departamento, Distrito"
+   */
+  async getLabelByUbidst(ubidst: string): Promise<string> {
+    if (!ubidst) return "";
+    try {
+      const rows = await this.ensureUbigeoCache();
+      const row = rows.find((r) => r.ubidst === ubidst);
+      if (!row) return ubidst;
+      return [row.ubipan, row.ubiden, row.ubidsn].filter(Boolean).join(", ");
+    } catch {
+      return ubidst;
+    }
+  }
+
   // ==================== MÉTODOS ALIAS (Para mantener compatibilidad) ====================
 
   /**

@@ -161,13 +161,22 @@ export interface DocumentoVenta {
 // =====================================================
 
 export interface FiltrosDocumentoVenta {
+  // Filtros base
   tipodoccomercialIds?: string[];
-  monedaIds?: string[];
-  condicionPago?: string;
+  puntoVentaIds?:       string[];
   estadoDocumentoSunat?: string[];
-  fechaDesde?: string;
-  fechaHasta?: string;
-  estado?: string;
+  estado?:              string;
+  fechaDesde?:          string;
+  fechaHasta?:          string;
+  // Filtros adicionales
+  monedaIds?:           string[];
+  clienteIds?:          string[];
+  trabajadorIds?:       string[];
+  tipoPagoIds?:         string[];
+  sedeIds?:             string[];
+  formaPagoIds?:        string[];
+  cuentaUsuarioIds?:    string[];
+  condicionPago?:       string;
 }
 
 // =====================================================

@@ -32,6 +32,7 @@ export interface DVentaFormData {
   fechaVencimiento?:    string;
   pedidoventaId:        string | null;
   tipoopegratuitaId:    string;
+  clienteDireccion:     string;
 }
 
 export interface GuiaFormData {
@@ -78,6 +79,7 @@ export const DVENTA_INITIAL: DVentaFormData = {
   cuentausuarioId:      "",
   pedidoventaId:        null,
   tipoopegratuitaId:    "00",
+  clienteDireccion:     "",
 };
 
 export const GUIA_INITIAL: GuiaFormData = {

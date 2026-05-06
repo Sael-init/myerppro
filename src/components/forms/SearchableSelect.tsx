@@ -56,11 +56,11 @@ export default function SearchableSelect({ label, name, value, onChange, options
             </div>
 
             {isOpen && (
-                <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-[120] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute top-[calc(100%+4px)] left-0 w-full min-w-[300px] bg-white border border-slate-200 rounded-xl shadow-xl z-[120] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                     <div className="p-2 border-b border-slate-100 bg-slate-50">
                         <div className="relative">
                             <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
+                            <input
                                 autoFocus
                                 type="text"
                                 placeholder="Buscar..."
@@ -70,7 +70,7 @@ export default function SearchableSelect({ label, name, value, onChange, options
                             />
                         </div>
                     </div>
-                    <ul className="max-h-52 overflow-y-auto custom-scrollbar">
+                    <ul className="min-h-[5rem] max-h-52 overflow-y-auto custom-scrollbar">
                         {filteredOptions.length > 0 ? (
                             filteredOptions.map((opt) => (
                                 <li 

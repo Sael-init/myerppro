@@ -8,13 +8,19 @@ import ImportarPedidoModal, {
   type PedidoVentaRow,
 } from "../../components/ImportarPedidoModal";
 
-import documentoVentaService from "@/services/DocumentoventaService";
+import documentoVentaService from "@/services/documentoventaService";
 import condicionPagoService from "@/services/condicionpagoService";
 import formasPagoService from "@/services/formaspagoService";
 import trabajadorService from "@/services/trabajadorService";
 import tipoOpeGratuitaService from "@/services/tipoopegratuitaService";
+import monedaService from "@/services/monedaService";
 import listaPreciosService from "@/services/listaprecioService";
-import type { ListaPrecioDetalle } from "@/types/listaprecio.types";
+import { presentacionService } from "@/services/presentacionService";
+import DateInput from "@/components/forms/DateInput";
+import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types";
+import StockDisponible from "@/components/shared/StockDisponible";
+
+interface PrecioLimites { min: number; max: number; }
 import ClienteFormModal from "@/app/dashboard/clientes/components/ClienteFormModal";
 
 import type {
@@ -25,6 +31,8 @@ import type {
   KeyValueOption,
   BienOption,
 } from "@/types/Documentoventa.types";
+import type { Producto } from "@/types/producto.types";                // ← NUEVO
+import type { GuiaRemisionPayload, GuiaRemisionDetalle } from "@/types/guiaRemision.types";
 import type { CondicionPago } from "@/types/condicionpago.types";
 import type { FormasPago } from "@/types/formaspago.types";
 import type { TipoOpeGratuita } from "@/types/tipoopegratuita.types";
@@ -83,17 +91,6 @@ const SectionTitle = ({
   </div>
 );
 
-const FormInput = ({ label, className, ...props }: any) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">
-      {label}
-    </label>
-    <input
-      className={`w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 transition-all text-sm ${className || ""}`}
-      {...props}
-    />
-  </div>
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TrabajadorDDL
@@ -312,15 +309,23 @@ function CrearDocumentoVentaContent() {
   const [condicionesPago,   setCondicionesPago]   = useState<CondicionPago[]>([]);
   const [formasPago,        setFormasPago]        = useState<FormasPago[]>([]);
   const [tiposOpeGratuita,  setTiposOpeGratuita]  = useState<TipoOpeGratuita[]>([]);
+  const [selectedListaId,     setSelectedListaId]     = useState<string>("092200000001");
+  const [listasPrecios,       setListasPrecios]       = useState<ListaPrecio[]>([]);
   const [listaPrecioDetalles, setListaPrecioDetalles] = useState<ListaPrecioDetalle[]>([]);
+  const [showStock,           setShowStock]           = useState(false);
+  const [presentacionesNuevo, setPresentacionesNuevo] = useState<{ key: string; value: string; factor: number }[]>([]);
+  const [loadingPres,         setLoadingPres]         = useState(false);
+  const [precioLimitesNuevo, setPrecioLimitesNuevo] = useState<PrecioLimites | null>(null);
   const [modalImportar,     setModalImportar]     = useState(false);
   const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
   const [pedidoImportadoId,       setPedidoImportadoId]       = useState<string | null>(null);
   const [pedidoOriginalItemCount, setPedidoOriginalItemCount] = useState<number>(0);
   const [clienteDocIdentId,       setClienteDocIdentId]       = useState<string | null>(null);
+  const [editEstado,              setEditEstado]              = useState<string | null>(null);
+  const [clienteDDLKey,           setClienteDDLKey]           = useState(0);
 
-  // Key para forzar re-mount del DropDownClient tras crear un cliente nuevo
-  const [clienteDDLKey, setClienteDDLKey] = useState(0);
+  // ── Cache de productos: bienId → Producto completo (con detraccionbienserviceId real) ──
+  const [bienCache, setBienCache] = useState<Record<string, Producto>>({});
 
   const {
     dVentaForm: formData,
@@ -330,6 +335,7 @@ function CrearDocumentoVentaContent() {
     setDetalles,
     guiaActiva,
     setGuiaActiva,
+    guiaForm,
     resetAll,
   } = useCrearStore();
 
@@ -341,14 +347,28 @@ function CrearDocumentoVentaContent() {
     [setFormData]
   );
 
+  // Al cambiar moneda, jalar el tipo de cambio automáticamente
+  const handleMonedaChange = useCallback(
+    async (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const monedaId = e.target.value;
+      setFormData((prev) => ({ ...prev, monedaId }));
+      const tc = await monedaService.getTipoCambio(monedaId);
+      setFormData((prev) => ({ ...prev, tipoCambio: tc }));
+    },
+    [setFormData]
+  );
+
   const emptyDetalle: CreateDocumentoVentaDetalleDTO = {
     bienId: "", presentacionId: "", cantidad: 1, precio: 0,
     descuentoProducto: 0, afectoInafecto: true, key: "", detraccionPorcentaje: 0,
   };
   const [nuevoDetalle, setNuevoDetalle] = useState<CreateDocumentoVentaDetalleDTO>({ ...emptyDetalle });
-  const today = new Date().toISOString().split("T")[0];
+  const today = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
 
-  // ── Limpiar todo ─────────────────────────────────────────────────────────────
+  // ── Limpiar todo ──────────────────────────────────────────────────────────────
   const handleLimpiar = useCallback(() => {
     resetAll();
     setNuevoDetalle({ ...emptyDetalle });
@@ -358,14 +378,15 @@ function CrearDocumentoVentaContent() {
     toast.success("Formulario limpiado");
   }, [resetAll]);
 
-  // ── Callback: cliente creado exitosamente ────────────────────────────────────
   const handleClienteCreado = useCallback(() => {
     setModalNuevoCliente(false);
-    setClienteDDLKey((k) => k + 1); // fuerza re-fetch del dropdown
+    setClienteDDLKey((k) => k + 1);
     toast.success("Cliente registrado — ya puedes buscarlo en el campo Cliente");
   }, []);
 
-  // ── Carga de catálogos ───────────────────────────────────────────────────────
+  // ── Carga catálogos (series, monedas, tipos doc, presentaciones, etc.) ────────
+  // getFormDropdowns sigue siendo usado para TODO excepto datos de detracción del bien,
+  // que ahora vienen de productoService.getById al momento de seleccionar.
   useEffect(() => {
     setLoadingCat(true);
     documentoVentaService
@@ -375,8 +396,8 @@ function CrearDocumentoVentaContent() {
         if (!isEditMode) {
           setFormData((prev) => ({
             ...prev,
-            fechaEmision: (prev as any).fechaEmision || today,
-            fechaDoc:     (prev as any).fechaDoc     || today,
+            fechaEmision: today,
+            fechaDoc:     today,
             monedaId:     (prev as any).monedaId     || (data.monedas?.[0]?.key?.toString() ?? ""),
             tipoCambio:   (prev as any).tipoCambio   || 1,
           }));
@@ -389,19 +410,15 @@ function CrearDocumentoVentaContent() {
   // ── Carga condiciones y formas de pago ───────────────────────────────────────
   useEffect(() => {
     const load = async () => {
-      const [resCP, resFP, resTOG, resLP] = await Promise.allSettled([
+      const [resCP, resFP, resTOG] = await Promise.allSettled([
         condicionPagoService.getAll(),
         formasPagoService.getAll(1, 100),
         tipoOpeGratuitaService.getAll(),
-        listaPreciosService.getById("092200000001"),
       ]);
       const cp = resCP.status === "fulfilled" ? resCP.value : [];
       setCondicionesPago(cp);
       setFormasPago(resFP.status === "fulfilled" ? (resFP.value as any).data : []);
       setTiposOpeGratuita(resTOG.status === "fulfilled" ? resTOG.value : []);
-      if (resLP.status === "fulfilled") {
-        setListaPrecioDetalles(resLP.value.detalles ?? []);
-      }
       if (!isEditMode && cp.length > 0) {
         setFormData((prev) => ({
           ...prev,
@@ -413,7 +430,7 @@ function CrearDocumentoVentaContent() {
     load();
   }, [isEditMode, setFormData]);
 
-  // ── Carga datos en modo edición ──────────────────────────────────────────────
+  // ── Modo edición ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!editId) return;
     resetAll();
@@ -434,7 +451,7 @@ function CrearDocumentoVentaContent() {
           puntoventaId:         doc.puntoventaId             ?? "",
           trabajadorId:         doc.trabajadorId             ?? "",
           tipopagoId:           doc.tipopagoId               ?? "",
-          tipoopegratuitaId:       doc.tipoopegratuitaId         ?? "00",
+          tipoopegratuitaId:    doc.tipoopegratuitaId        ?? "00",
           observacion:          doc.observacion              ?? "",
           ordencompraNumero:    doc.ordencompra_numero       ?? "",
           detraccion:           doc.detraccion               ?? false,
@@ -463,6 +480,7 @@ function CrearDocumentoVentaContent() {
             }))
           );
         }
+        setEditEstado(doc.estado ?? null);
         toast.success(`Datos cargados: ${doc.serie}-${doc.numero}`);
       })
       .catch((err) => {
@@ -472,6 +490,33 @@ function CrearDocumentoVentaContent() {
       })
       .finally(() => setLoadingEdit(false));
   }, [editId, router, setDetalles, setFormData, resetAll, today]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Helper: cargar producto completo y cachear
+  // Llama a /api/Producto/{bienId} y guarda el resultado.
+  // Esto garantiza que detraccionbienserviceId sea el valor real de BD.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const cargarProducto = useCallback(
+    async (bienId: string): Promise<Producto | null> => {
+      if (!bienId) return null;
+      if (bienCache[bienId]) return bienCache[bienId];
+      // Lee del catálogo ya cargado (catalogs.bienes = BienOption[] con afecto_inafecto y detracción)
+      const bien = catalogs?.bienes?.find((b) => b.key?.toString() === bienId) as any;
+      if (!bien) return null;
+      const producto: Producto = {
+        bienId,
+        descripcion:              bien.value ?? bienId,
+        afecto_inafecto:          bien.afecto_inafecto          ?? true,
+        detraccionbienserviceId:  bien.detraccionbienserviceId  ?? "000",
+        detraccion_porcentaje:    bien.detraccionPorcentaje      ?? 0,
+        precio: 0, costo: 0,
+        tipobienId: 0, subclasebienId: "", unidadmedidaId: "", estado: true,
+      } as Producto;
+      setBienCache((prev) => ({ ...prev, [bienId]: producto }));
+      return producto;
+    },
+    [bienCache, catalogs]
+  );
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Derivados / memos
@@ -507,14 +552,6 @@ function CrearDocumentoVentaContent() {
     return todos;
   }, [catalogs, clienteDocIdentId]);
 
-  const presentacionesActuales = useMemo(() => {
-    if (!catalogs?.presentaciones || !(nuevoDetalle as any).bienId) return [];
-    const todas = catalogs.presentaciones.find((g) => g.bienId === (nuevoDetalle as any).bienId)?.items ?? [];
-    if (listaPrecioDetalles.length === 0) return todas;
-    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
-    return todas.filter((p) => presIds.has(String(p.key)));
-  }, [catalogs, (nuevoDetalle as any).bienId, listaPrecioDetalles]);
-
   const seriesFiltradas = useMemo(() => {
     if (!catalogs?.series || !(formData as any).tipodoccomercialId || !(formData as any).puntoventaId) return [];
     return (
@@ -539,10 +576,16 @@ function CrearDocumentoVentaContent() {
     );
   }, [catalogs, (formData as any).tipodoccomercialId, (formData as any).puntoventaId, (formData as any).serie]);
 
+  // ── Nombre del bien: primero cache (tiene descripcion real), luego catálogo ──
   const getBienNombre = useCallback(
-    (bienId: string) => catalogs?.bienes?.find((b) => b.key?.toString() === bienId)?.value ?? bienId,
-    [catalogs]
+    (bienId: string) => {
+      const cached = bienCache[bienId];
+      if (cached?.descripcion) return cached.descripcion;
+      return catalogs?.bienes?.find((b) => b.key?.toString() === bienId)?.value ?? bienId;
+    },
+    [catalogs, bienCache]
   );
+
   const getPresentacionNombre = useCallback(
     (bienId: string, presentacionId: string) => {
       const g = catalogs?.presentaciones?.find((g) => g.bienId === bienId);
@@ -550,51 +593,113 @@ function CrearDocumentoVentaContent() {
     },
     [catalogs]
   );
+
   const getPresentacionFactor = useCallback(
     (bienId: string, presentacionId: string): number => {
+      // Primero busca en las presentaciones dinámicas del add-row
+      const dyn = presentacionesNuevo.find((p) => p.key === presentacionId);
+      if (dyn) return dyn.factor;
+      // Fallback al catálogo general (para filas ya guardadas)
       const g = catalogs?.presentaciones?.find((g) => g.bienId === bienId);
       return g?.items?.find((p) => p.key?.toString() === presentacionId)?.factor ?? 1;
     },
-    [catalogs]
+    [catalogs, presentacionesNuevo]
   );
+
   const formatMoney = (val: number) =>
     new Intl.NumberFormat("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
-  // Bienes filtrados por los que tienen al menos una presentación en la lista de precios
+  // ── Detracción del bien: lee del cache (getById) → fuente real de BD ──────────
+  // Si el bien no está en cache todavía, fallback al catálogo (getFormDropdowns).
+  // En la práctica siempre estará en cache porque se llama cargarProducto antes
+  // de usar getBienDetraccionInfo al agregar un ítem.
+  const getBienDetraccionInfo = useCallback(
+    (bienId: string): { key: string; detraccionPorcentaje: number; afectoInafecto: boolean } => {
+      const cached = bienCache[bienId];
+      if (cached) {
+        return {
+          key:                  cached.detraccionbienserviceId ?? "000",
+          detraccionPorcentaje: cached.detraccion_porcentaje   ?? 0,
+          afectoInafecto:       cached.afecto_inafecto         ?? true,
+        };
+      }
+      // Fallback mientras llega el cache
+      const bien = catalogs?.bienes?.find((b) => b.key === bienId) as BienOption | undefined;
+      return {
+        key:                  bien?.detraccionbienserviceId ?? "000",
+        detraccionPorcentaje: bien?.detraccionPorcentaje   ?? 0,
+        afectoInafecto:       bien?.afecto_inafecto        ?? true,
+      };
+    },
+    [catalogs, bienCache]
+  );
+
+  // ── Carga listas de precios disponibles ──────────────────────────────────
+  useEffect(() => {
+    listaPreciosService
+      .getByEmpresa(EMPRESA_ID, 1, 100)
+      .then((res) => {
+        const disponibles = res.data.filter(
+          (lp) => ((lp as any).estado?.descripcion ?? lp.estado_listprec ?? "").toLowerCase() === "registrado"
+        );
+        setListasPrecios(disponibles);
+        if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === selectedListaId)) {
+          setSelectedListaId(disponibles[0].listaprecioId);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Carga detalles de la lista de precios activa ───────────────────────────
+  useEffect(() => {
+    if (!selectedListaId) return;
+    listaPreciosService
+      .getById(selectedListaId)
+      .then((lp: any) => setListaPrecioDetalles(lp.detalles ?? []))
+      .catch(() => {});
+  }, [selectedListaId]);
+
+  // ── Bienes y presentaciones disponibles según lista de precios ─────────────
   const bienesDisponibles = useMemo(() => {
     if (!catalogs?.bienes) return [];
-    if (listaPrecioDetalles.length === 0) return catalogs.bienes;
+    const base = catalogs.bienes.map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
+    if (listaPrecioDetalles.length === 0) return base;
     const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
-    return catalogs.bienes.filter((b) => {
+    return base.filter((b) => {
       const pres = catalogs.presentaciones?.find((g) => g.bienId === b.key)?.items ?? [];
-      return pres.some((p) => presIds.has(String(p.key)));
+      return (pres as any[]).some((p) => presIds.has(String(p.key)));
     });
   }, [catalogs, listaPrecioDetalles]);
 
-  // Precio mínimo de la lista según bien + presentación + moneda
-  const getPrecioFromLista = useCallback(
-    (bienId: string, presentacionId: string, monedaId: string): number => {
-      const det = listaPrecioDetalles.find(
-        (d) => d.bienId === bienId && d.presentacionId === presentacionId
-      );
-      if (!det) return 0;
-      if (monedaId === "002") return det.precio_nuevo_minimo_dol ?? 0;
-      if (monedaId === "003") return det.precio_nuevo_minimo_eur ?? 0;
-      return det.precio_nuevo_minimo ?? 0;
-    },
-    [listaPrecioDetalles]
-  );
+  const presentacionOptsNuevo = useMemo(() => {
+    if (presentacionesNuevo.length === 0) return [];
+    if (listaPrecioDetalles.length === 0) return presentacionesNuevo;
+    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
+    return presentacionesNuevo.filter((p) => presIds.has(p.key));
+  }, [presentacionesNuevo, listaPrecioDetalles]);
 
-  const getBienDetraccionInfo = useCallback(
-    (bienId: string): { key: string; detraccionPorcentaje: number; afectoInafecto: boolean } => {
-      const bien = catalogs?.bienes?.find((b) => b.key === bienId) as BienOption | undefined;
-      return {
-        key: bien?.detraccionbienserviceId ?? "000",
-        detraccionPorcentaje: bien?.detraccionPorcentaje ?? 0,
-        afectoInafecto: bien?.afecto_inafecto ?? true,
-      };
+  const handlePresentacionNuevoChange = useCallback(
+    (presentacionId: string) => {
+      const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
+      let precio = 0;
+      let limites: PrecioLimites | null = null;
+      if (det) {
+        if ((formData as any).monedaId === "002") {
+          precio  = det.precio_nuevo_dol ?? 0;
+          limites = { min: det.precio_nuevo_minimo_dol ?? 0, max: det.precio_nuevo_dol ?? 0 };
+        } else if ((formData as any).monedaId === "003") {
+          precio  = det.precio_nuevo_eur ?? 0;
+          limites = { min: det.precio_nuevo_minimo_eur ?? 0, max: det.precio_nuevo_eur ?? 0 };
+        } else {
+          precio  = det.precio_nuevo ?? 0;
+          limites = { min: det.precio_nuevo_minimo ?? 0, max: det.precio_nuevo ?? 0 };
+        }
+      }
+      setPrecioLimitesNuevo(limites);
+      setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));
     },
-    [catalogs]
+    [listaPrecioDetalles, (formData as any).monedaId]
   );
 
   const selectedFormaPago = useMemo(
@@ -609,9 +714,7 @@ function CrearDocumentoVentaContent() {
     ) as any;
     return (
       (selected?.descripcion ?? selected?.condicion_pago ?? (formData as any).condicionPago) as string
-    )
-      .toUpperCase()
-      .includes("CRED");
+    ).toUpperCase().includes("CRED");
   }, [(formData as any).condicionPago, condicionesPago]);
 
   const isCondicionGratuita = useMemo(() => {
@@ -621,16 +724,17 @@ function CrearDocumentoVentaContent() {
     ) as any;
     return (
       (selected?.descripcion ?? selected?.condicion_pago ?? (formData as any).condicionPago) as string
-    )
-      .toUpperCase()
-      .includes("GRATU");
+    ).toUpperCase().includes("GRATU");
   }, [(formData as any).condicionPago, condicionesPago]);
 
   const totales = useMemo(() => {
-    let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0;
+    let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0, gratuito = 0;
+    const esGratuita = isCondicionGratuita;
     (detalles as any[]).forEach((det: any) => {
       const subtotal = det.cantidad * det.precio - (det.descuentoProducto || 0);
-      if (det.afectoInafecto) {
+      if (esGratuita) {
+        gratuito += subtotal;
+      } else if (det.afectoInafecto) {
         const base = subtotal / (1 + IGV_PORCENTAJE);
         valorventaAfecto += base;
         igvTotal         += subtotal - base;
@@ -644,14 +748,15 @@ function CrearDocumentoVentaContent() {
       valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
       igv:                Math.round(igvTotal           * 100) / 100,
       total:              Math.round(total              * 100) / 100,
+      gravado:            Math.round(valorventaAfecto   * 100) / 100,
+      exonerado:          Math.round(valorventaInafecto * 100) / 100,
+      gratuito:           Math.round(gratuito           * 100) / 100,
     };
-  }, [detalles]);
+  }, [detalles, isCondicionGratuita]);
 
   const detraccionMonto = useMemo(() => {
     if (!(formData as any).detraccion || !(formData as any).detraccionPorcentaje) return 0;
-    return (
-      Math.round(totales.total * (((formData as any).detraccionPorcentaje || 0) / 100) * 100) / 100
-    );
+    return Math.round(totales.total * (((formData as any).detraccionPorcentaje || 0) / 100) * 100) / 100;
   }, [(formData as any).detraccion, (formData as any).detraccionPorcentaje, totales.total]);
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -659,13 +764,12 @@ function CrearDocumentoVentaContent() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const validarFormulario = (): boolean => {
-    const tipo = (formData as any).tipodoccomercialId as string;
-    if (!tipo)                               { toast.error("Seleccione el tipo de documento"); return false; }
-    if (!(formData as any).clienteId)        { toast.error("Seleccione el cliente");           return false; }
-    if (!(formData as any).puntoventaId)     { toast.error("Seleccione el punto de venta");    return false; }
-    if (!(formData as any).monedaId)         { toast.error("Seleccione la moneda");            return false; }
-    if (!(formData as any).condicionPago)    { toast.error("Seleccione la condición de pago"); return false; }
-    if ((detalles as any[]).length === 0)    { toast.error("Agregue al menos un item al documento"); return false; }
+    if (!(formData as any).tipodoccomercialId) { toast.error("Seleccione el tipo de documento"); return false; }
+    if (!(formData as any).clienteId)          { toast.error("Seleccione el cliente");           return false; }
+    if (!(formData as any).puntoventaId)        { toast.error("Seleccione el punto de venta");    return false; }
+    if (!(formData as any).monedaId)            { toast.error("Seleccione la moneda");            return false; }
+    if (!(formData as any).condicionPago)       { toast.error("Seleccione la condición de pago"); return false; }
+    if ((detalles as any[]).length === 0)       { toast.error("Agregue al menos un item");        return false; }
     if (isCondicionCredito && !(formData as any).fechaVencimiento) {
       toast.error("Ingrese la fecha de vencimiento para crédito");
       return false;
@@ -708,8 +812,134 @@ function CrearDocumentoVentaContent() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Handler: CREAR
+  // Handler: CREAR con Guía
   // ─────────────────────────────────────────────────────────────────────────────
+
+  const validateGuia = (): boolean => {
+    if (!guiaForm.fechaTraslado)    { toast.error("Guía: ingrese la fecha de traslado");     return false; }
+    if (!guiaForm.motivoTrasladoId) { toast.error("Guía: seleccione el motivo de traslado"); return false; }
+    if (!guiaForm.serie)            { toast.error("Guía: seleccione la serie");               return false; }
+    if (!guiaForm.almacenId)        { toast.error("Guía: seleccione el almacén de origen");  return false; }
+    if (guiaForm.motivoTrasladoId === "04" && !guiaForm.almacenDestinoId)
+      { toast.error("Guía: seleccione el almacén destino"); return false; }
+    if (guiaForm.motivoTrasladoId === "13" && !guiaForm.otroMotivoTraslado)
+      { toast.error('Guía: especifique el motivo "OTROS"'); return false; }
+    return true;
+  };
+
+  const buildGuiaPayload = (): GuiaRemisionPayload => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const detallesGuia: GuiaRemisionDetalle[] = (detalles as any[]).map((det: any, idx: number) => ({
+      bienId:             det.bienId,
+      presentacionId:     det.presentacionId,
+      item:               det.item ?? idx + 1,
+      cantidad:           det.cantidad,
+      conversion_total:   det.conversionTotal ?? det.cantidad,
+      precio:             det.precio ?? 0,
+      costo:              0,
+      importe:            det.importe ?? det.cantidad * (det.precio ?? 0),
+      Saldo_cantidad:     det.saldoCantidad ?? det.cantidad,
+      descuento_producto: det.descuentoProducto ?? 0,
+      afecto_inafecto:    det.afectoInafecto ?? true,
+      observacion:        det.observacion ?? "",
+      documentoId:        "",
+      tabla_documento:    "",
+      saldo_temporal:     det.saldoTemporal ?? det.cantidad,
+    }));
+    return {
+      empresaId:              EMPRESA_ID,
+      tipomovimientoId:       "S",
+      tipodoccomercialId:     "X029",
+      fecha_emision:          todayStr,
+      fecha_doc:              todayStr,
+      fecha_traslado:         guiaForm.fechaTraslado || todayStr,
+      serie:                  guiaForm.serie,
+      ...(guiaForm.numeroManual && guiaForm.correlativo ? { correlativo: guiaForm.correlativo } : {}),
+      clienteId:              (formData as any).clienteId,
+      monedaId:               (formData as any).monedaId,
+      tipo_cambio:            (formData as any).tipoCambio ?? 1,
+      trabajadorId:           (formData as any).trabajadorId || undefined,
+      puntoventaId:           (formData as any).puntoventaId || undefined,
+      cuentausuarioId:        (formData as any).cuentausuarioId || "",
+      id_almacen_inicio:      guiaForm.almacenId || "",
+      id_almacen_destino:     guiaForm.almacenDestinoId || "",
+      punto_partida:          guiaForm.puntoPartida || undefined,
+      punto_llegada:          guiaForm.puntoLlegada || undefined,
+      motivotrasladoId:       guiaForm.motivoTrasladoId,
+      otro_motivo_traslado:   guiaForm.motivoTrasladoId === "13" ? guiaForm.otroMotivoTraslado || undefined : undefined,
+      observacion:            guiaForm.observacion || undefined,
+      movilidadId:            guiaForm.movilidadId || undefined,
+      transportistaId:        guiaForm.transportista || undefined,
+      unidadTransporteId:     guiaForm.unidadTransporte || undefined,
+      conductorId:            guiaForm.conductor || undefined,
+      incluye_igv:            true,
+      estado:                 "REGISTRADO",
+      estado_documento_sunat: "PENDIENTEXML",
+      detalles:               detallesGuia,
+    };
+  };
+
+  const handleSubmitCombinado = async () => {
+    if (!validarFormulario()) return;
+    if (!(formData as any).serie) { toast.error("Seleccione la serie del documento"); return; }
+    if (!validateGuia()) return;
+
+    setLoading(true);
+    try {
+      const combinedDto = {
+        ...(formData as any),
+        valorventaAfecto:   totales.valorventaAfecto,
+        valorventaInafecto: totales.valorventaInafecto,
+        igv:                totales.igv,
+        total:              totales.total,
+        saldo:              totales.total,
+        detraccionMonto:    (formData as any).detraccion ? detraccionMonto : 0,
+        detalles:           detalles as any,
+        guiaRemision:       buildGuiaPayload(),
+      };
+
+      const res = await documentoVentaService.crearConGuiaRemision(combinedDto);
+      const dvGuardado =
+        (Array.isArray(res.documentosVentaIds) && res.documentosVentaIds.length > 0) ||
+        !!res.documentoVentaId ||
+        (res.documentosGenerados ?? 0) > 0;
+
+      if (!dvGuardado && !res.isSuccess) {
+        toast.error(res.message || "Error al guardar el documento de venta");
+        return;
+      }
+
+      const cantDV = res.documentosGenerados ?? res.documentosVentaIds?.length ?? 1;
+      res.isSuccess
+        ? toast.success(`${cantDV} DV + Guía creados y enviados a SUNAT`)
+        : toast.warning(`Guardado con advertencias: ${res.message ?? "revisar"}`);
+
+      if (pedidoImportadoId) {
+        const esUsoCompleto =
+          (detalles as any[]).length === pedidoOriginalItemCount &&
+          (detalles as any[]).every((d: any) => Number(d.cantidad) >= Number(d.saldoCantidad ?? d.cantidad));
+        if (!esUsoCompleto) {
+          try {
+            const resPedido = await documentoVentaService.comprometerPedidoVenta(pedidoImportadoId);
+            resPedido.isSuccess
+              ? toast.success(`Pedido ${pedidoImportadoId} comprometido`)
+              : toast.warning(`No se pudo comprometer el pedido: ${resPedido.message}`);
+          } catch (errC: any) {
+            toast.warning(`No se pudo comprometer el pedido: ${errC.message}`);
+          }
+        }
+        setPedidoImportadoId(null);
+        setPedidoOriginalItemCount(0);
+      }
+
+      resetAll();
+      router.push("/dashboard/ventas");
+    } catch (error: any) {
+      toast.error(error.message || "Error crítico al guardar");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (enviarSunat: boolean) => {
     if (!validarFormulario()) return;
@@ -757,15 +987,11 @@ function CrearDocumentoVentaContent() {
       }
 
       if (pedidoImportadoId) {
-        // Determina si el pedido fue facturado parcialmente:
-        // - se quitó algún item, O
-        // - algún item tiene cantidad menor al saldo original
         const esUsoCompleto =
           (detalles as any[]).length === pedidoOriginalItemCount &&
           (detalles as any[]).every(
             (d: any) => Number(d.cantidad) >= Number(d.saldoCantidad ?? d.cantidad)
           );
-
         if (!esUsoCompleto) {
           try {
             const resPedido = await documentoVentaService.comprometerPedidoVenta(pedidoImportadoId);
@@ -782,7 +1008,6 @@ function CrearDocumentoVentaContent() {
 
       resetAll();
       router.push("/dashboard/ventas");
-
     } catch (error: any) {
       toast.error(error.message || "Error crítico al guardar el documento");
     } finally {
@@ -794,20 +1019,29 @@ function CrearDocumentoVentaContent() {
   // Handlers de detalles
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleAgregarDetalle = () => {
+  // Agregar ítem: llama cargarProducto para tener detraccionbienserviceId real
+  const handleAgregarDetalle = async () => {
     if (!(nuevoDetalle as any).bienId)         return toast.error("Seleccione el producto");
     if (!(nuevoDetalle as any).presentacionId) return toast.error("Seleccione la presentación");
     if ((nuevoDetalle as any).cantidad <= 0)   return toast.error("La cantidad debe ser mayor a 0");
     if ((nuevoDetalle as any).precio   <= 0)   return toast.error("El precio debe ser mayor a 0");
+    if (precioLimitesNuevo && (nuevoDetalle as any).precio < precioLimitesNuevo.min)
+      return toast.error(`El precio no puede ser menor al mínimo (${precioLimitesNuevo.min.toFixed(2)})`);
+
+    // Asegurar que el producto está en cache antes de calcular detracción
+    await cargarProducto((nuevoDetalle as any).bienId);
 
     const factor          = getPresentacionFactor((nuevoDetalle as any).bienId, (nuevoDetalle as any).presentacionId);
     const conversionTotal = Math.round((nuevoDetalle as any).cantidad * factor * 1_000_000) / 1_000_000;
     const importe         = Math.round(((nuevoDetalle as any).cantidad * (nuevoDetalle as any).precio - ((nuevoDetalle as any).descuentoProducto || 0)) * 100) / 100;
+
     let precioSinIgv = (nuevoDetalle as any).precio, porcentajeIgv = 0;
     if ((nuevoDetalle as any).afectoInafecto) {
       precioSinIgv  = Math.round(((nuevoDetalle as any).precio / (1 + IGV_PORCENTAJE)) * 1_000_000) / 1_000_000;
       porcentajeIgv = 18;
     }
+
+    // Ahora el cache ya tiene el producto — detraccionbienserviceId correcto
     const detraccionInfo = getBienDetraccionInfo((nuevoDetalle as any).bienId);
 
     setDetalles((prev: any) => [
@@ -816,15 +1050,17 @@ function CrearDocumentoVentaContent() {
         ...(nuevoDetalle as any),
         item: prev.length + 1,
         conversionTotal, importe,
-        saldoCantidad: (nuevoDetalle as any).cantidad,
-        saldoTemporal: importe,
+        saldoCantidad:            (nuevoDetalle as any).cantidad,
+        saldoTemporal:            importe,
         cantidadPendienteBoleteo: (nuevoDetalle as any).cantidad,
         precioSinIgv, porcentajeIgv,
-        key: detraccionInfo.key,
+        key:                  detraccionInfo.key,
         detraccionPorcentaje: detraccionInfo.detraccionPorcentaje,
+        afectoInafecto:       detraccionInfo.afectoInafecto,
       },
     ]);
     setNuevoDetalle({ ...emptyDetalle });
+    setPrecioLimitesNuevo(null);
   };
 
   const handleEliminarDetalle = (idx: number) => {
@@ -840,10 +1076,21 @@ function CrearDocumentoVentaContent() {
         const maxCantidad  = det.saldoCantidad ?? newCantidad;
         const cantidad     = Math.min(Math.max(newCantidad, 0), maxCantidad);
         if (newCantidad > maxCantidad) toast.warning(`Cantidad máxima disponible: ${maxCantidad}`);
-        const factor         = getPresentacionFactor(det.bienId, det.presentacionId);
+        const factor          = getPresentacionFactor(det.bienId, det.presentacionId);
         const conversionTotal = Math.round(cantidad * factor * 1_000_000) / 1_000_000;
         const importe         = Math.round((cantidad * det.precio - (det.descuentoProducto || 0)) * 100) / 100;
         return { ...det, cantidad, conversionTotal, importe };
+      })
+    );
+  };
+
+  const handlePrecioChange = (idx: number, newPrecio: number) => {
+    setDetalles((prev: any) =>
+      prev.map((det: any, i: number) => {
+        if (i !== idx) return det;
+        const precio  = Math.max(newPrecio, 0);
+        const importe = Math.round((det.cantidad * precio - (det.descuentoProducto || 0)) * 100) / 100;
+        return { ...det, precio, importe };
       })
     );
   };
@@ -853,22 +1100,29 @@ function CrearDocumentoVentaContent() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const handleImportarPedido = useCallback(
-    (pedido: PedidoVentaRow) => {
+    async (pedido: PedidoVentaRow) => {
       setFormData((prev) => ({
         ...prev,
-        clienteId:     pedido.clienteId      ?? prev.clienteId,
-        trabajadorId:  pedido.trabajadorId   ?? prev.trabajadorId,
-        puntoventaId:  pedido.puntoventaId   ?? prev.puntoventaId,
-        monedaId:      pedido.monedaId       ?? prev.monedaId,
-        tipoCambio:    pedido.tipo_cambio    ?? prev.tipoCambio,
-        condicionPago: pedido.condicion_pago ?? prev.condicionPago,
-        tipopagoId:    pedido.formaspagoId   ?? prev.tipopagoId,
-        observacion:   pedido.observacion    ?? prev.observacion,
-        pedidoventaId: pedido.pedidoventaId,
+        clienteId:        pedido.clienteId      ?? prev.clienteId,
+        trabajadorId:     pedido.trabajadorId   ?? prev.trabajadorId,
+        puntoventaId:     pedido.puntoventaId   ?? prev.puntoventaId,
+        monedaId:         pedido.monedaId       ?? prev.monedaId,
+        tipoCambio:       pedido.tipo_cambio    ?? prev.tipoCambio,
+        condicionPago:    pedido.condicion_pago ?? prev.condicionPago,
+        tipopagoId:       pedido.formaspagoId   ?? prev.tipopagoId,
+        observacion:      pedido.observacion    ?? prev.observacion,
+        pedidoventaId:    pedido.pedidoventaId,
+        clienteDireccion: pedido.lugar_despacho ?? pedido.cliente_direccion ?? "",
         serie: "", numero: "",
       }));
 
       const rawDetalles = pedido.detalle ?? [];
+
+      // Pre-cargar todos los productos del pedido en paralelo
+      await Promise.allSettled(
+        rawDetalles.map((det: any) => det.bienId ? cargarProducto(det.bienId) : Promise.resolve(null))
+      );
+
       const detallesFiltrados = rawDetalles
         .map((det: any, idx: number) => {
           const bienId         = det.bienId         ?? "";
@@ -877,24 +1131,28 @@ function CrearDocumentoVentaContent() {
           const cantidad       = Math.min(det.cantidad ?? 1, saldoCantidad);
           const precio         = det.precio          ?? 0;
           const descuento      = det.descuento_producto ?? det.descuentoProducto ?? 0;
-          const afecto         = det.afecto_inafecto    ?? det.afectoInafecto    ?? true;
           const factor          = getPresentacionFactor(bienId, presentacionId);
           const conversionTotal = Math.round(cantidad * factor * 1_000_000) / 1_000_000;
           const importe         = Math.round((cantidad * precio - descuento) * 100) / 100;
-          const precioSinIgv    = afecto ? Math.round((precio / (1 + IGV_PORCENTAJE)) * 1_000_000) / 1_000_000 : precio;
-          const porcentajeIgv   = afecto ? 18 : 0;
-          const detraccionInfo  = getBienDetraccionInfo(bienId);
+          const detraccionInfo  = getBienDetraccionInfo(bienId); // ahora usa cache real
+          const precioSinIgv    = detraccionInfo.afectoInafecto
+            ? Math.round((precio / (1 + IGV_PORCENTAJE)) * 1_000_000) / 1_000_000
+            : precio;
+          const porcentajeIgv   = detraccionInfo.afectoInafecto ? 18 : 0;
           return {
             item: idx + 1, bienId, presentacionId, cantidad, precio,
-            descuentoProducto: descuento, afectoInafecto: afecto,
+            descuentoProducto: descuento,
+            afectoInafecto:    detraccionInfo.afectoInafecto,
             conversionTotal, importe,
             saldoCantidad, saldoTemporal: importe, cantidadPendienteBoleteo: cantidad,
             precioSinIgv, porcentajeIgv,
-            key: detraccionInfo.key, detraccionPorcentaje: detraccionInfo.detraccionPorcentaje,
+            key:                  detraccionInfo.key,
+            detraccionPorcentaje: detraccionInfo.detraccionPorcentaje,
             observacion: det.observacion ?? "",
           };
         })
         .filter((det: any) => (det.saldoCantidad ?? 0) > 0);
+
       if (detallesFiltrados.length > 0) {
         setDetalles(detallesFiltrados.map((d: any, i: number) => ({ ...d, item: i + 1 })));
       }
@@ -905,12 +1163,13 @@ function CrearDocumentoVentaContent() {
       const ref = pedido.numero_correlativo ?? pedido.pedidoventaId;
       toast.success(`Pedido ${ref} importado · ${rawDetalles.length} ítem(s) cargados`);
     },
-    [setFormData, setDetalles, getPresentacionFactor, getBienDetraccionInfo]
+    [setFormData, setDetalles, getPresentacionFactor, getBienDetraccionInfo, cargarProducto]
   );
 
   // ─────────────────────────────────────────────────────────────────────────────
   const isBusy         = loadingCat || loadingEdit;
   const isPedidoLocked = !!pedidoImportadoId;
+  const isReadOnly     = isEditMode && editEstado !== null && editEstado !== "REGISTRADO";
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Render
@@ -942,7 +1201,6 @@ function CrearDocumentoVentaContent() {
                 {pedidoImportadoId ? (
                   <span className="text-emerald-600 font-semibold">
                     ✓ Pedido {pedidoImportadoId} importado — se comprometará al guardar
-                    <span className="ml-2 text-amber-600">· Cliente bloqueado · Puedes editar cantidades y quitar items</span>
                   </span>
                 ) : (
                   "Complete los datos de cabecera y agregue los detalles del documento"
@@ -964,24 +1222,21 @@ function CrearDocumentoVentaContent() {
               Importar
             </button>
           )}
-
           {!isEditMode && (
             <button
               type="button"
               onClick={handleLimpiar}
               disabled={loading}
               className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
-              title="Limpiar todos los campos del formulario"
             >
               <IconRefresh size={18} />
               Limpiar
             </button>
           )}
-
           {isEditMode ? (
             <button
               onClick={handleUpdate}
-              disabled={isBusy || loading}
+              disabled={isBusy || loading || isReadOnly}
               className="px-6 py-2.5 rounded-xl text-white font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg bg-amber-500 hover:bg-amber-600 shadow-amber-200"
             >
               {loading ? <IconLoader size={20} className="animate-spin" /> : <IconDeviceFloppy size={20} />}
@@ -989,7 +1244,7 @@ function CrearDocumentoVentaContent() {
             </button>
           ) : (
             <button
-              onClick={() => handleSubmit(true)}
+              onClick={() => guiaActiva ? handleSubmitCombinado() : handleSubmit(true)}
               disabled={isBusy || loading}
               className="px-6 py-2.5 rounded-xl text-white font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg bg-blue-600 hover:bg-blue-700 shadow-blue-200"
             >
@@ -1013,30 +1268,18 @@ function CrearDocumentoVentaContent() {
           Cargando catálogos del formulario...
         </div>
       )}
-
-      {isPedidoLocked && (
-        <div className="flex items-center gap-3 text-xs text-amber-800 mb-4 bg-amber-50 px-4 py-3 rounded-lg border border-amber-200">
-          <IconFileImport size={16} className="text-amber-600 shrink-0" />
-          <span>
-            <strong>Pedido importado:</strong> el campo cliente está bloqueado. Puedes editar cantidades (respetando el saldo disponible) y eliminar items del detalle.
-            <button
-              type="button"
-              onClick={() => { setPedidoImportadoId(null); setClienteDocIdentId(null); updateField("pedidoventaId", null); toast.info("Bloqueo liberado"); }}
-              className="ml-2 underline hover:no-underline text-amber-700 font-semibold"
-            >
-              Desbloquear
-            </button>
-          </span>
+      {isReadOnly && (
+        <div className="flex items-center gap-2 text-xs text-red-700 mb-4 bg-red-50 px-4 py-3 rounded-lg border border-red-200">
+          <IconEdit size={14} className="text-red-500 shrink-0" />
+          Solo se permite editar documentos en estado <strong className="ml-1">REGISTRADO</strong>. Este documento está en estado <strong className="ml-1">{editEstado}</strong> y no puede modificarse.
         </div>
       )}
 
       {/* ── Grid principal ── */}
       <div className="grid grid-cols-12 gap-6">
-
-        {/* ── Columna izquierda ── */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
 
-          {/* Datos del documento */}
+          {/* Datos del Documento + Cliente */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <SectionTitle title="Datos del Documento" icon={IconFileInvoice} />
 
@@ -1047,18 +1290,13 @@ function CrearDocumentoVentaContent() {
               <select
                 name="tipodoccomercialId"
                 value={(formData as any).tipodoccomercialId}
-                onChange={(e) => {
-                  updateField("tipodoccomercialId", e.target.value);
-                  updateField("serie", "");
-                }}
+                onChange={(e) => { updateField("tipodoccomercialId", e.target.value); updateField("serie", ""); }}
                 className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700 uppercase"
               >
                 <option value="">-- Seleccione tipo de documento --</option>
                 {catalogs && catalogs.tipos_documento_comercial.length > 0 ? (
                   tiposDocFiltrados.map((tipo) => (
-                    <option key={tipo.key} value={tipo.key.toString()}>
-                      {tipo.key} - {tipo.value}
-                    </option>
+                    <option key={tipo.key} value={tipo.key.toString()}>{tipo.key} - {tipo.value}</option>
                   ))
                 ) : (
                   <>
@@ -1071,16 +1309,8 @@ function CrearDocumentoVentaContent() {
               </select>
               {(formData as any).tipodoccomercialId && (
                 <p className="text-[10px] mt-1 ml-1 font-semibold">
-                  {TIPO_SOLO_RUC.includes((formData as any).tipodoccomercialId) && (
-                    <span className="text-blue-600">📋 Solo clientes con RUC</span>
-                  )}
-                  {TIPO_SOLO_DNI.includes((formData as any).tipodoccomercialId) && (
-                    <span className="text-emerald-600">🪪 Solo clientes con DNI</span>
-                  )}
-                  {!TIPO_SOLO_RUC.includes((formData as any).tipodoccomercialId) &&
-                   !TIPO_SOLO_DNI.includes((formData as any).tipodoccomercialId) && (
-                    <span className="text-slate-400">Acepta cualquier tipo de documento de identidad</span>
-                  )}
+                  {TIPO_SOLO_RUC.includes((formData as any).tipodoccomercialId) && <span className="text-blue-600">Solo clientes con RUC</span>}
+                  {TIPO_SOLO_DNI.includes((formData as any).tipodoccomercialId) && <span className="text-emerald-600">Solo clientes con DNI</span>}
                 </p>
               )}
             </div>
@@ -1137,42 +1367,33 @@ function CrearDocumentoVentaContent() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Fecha de Emisión</label>
                 <div className="h-[42px] flex items-center justify-center border border-slate-100 rounded-lg bg-slate-50 font-mono text-sm text-slate-600 font-bold">
-                  {isEditMode ? (formData as any).fechaEmision || today : today}
+                  {(() => {
+                    const iso = isEditMode ? (formData as any).fechaEmision || today : today;
+                    const [y, m, d] = iso.split("-");
+                    return `${d}/${m}/${y}`;
+                  })()}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* ── Cliente ── */}
-          <div className={`bg-white p-6 rounded-xl shadow-sm border transition-all ${isPedidoLocked ? "border-amber-200 bg-amber-50/30" : "border-slate-200"}`}>
-
-            {/* Header sección cliente con botón Nuevo Cliente */}
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4 mt-2">
-              <div className="flex items-center gap-2 text-slate-800">
-                <IconUser className="text-blue-600" size={20} />
-                <h3 className="font-bold text-sm uppercase tracking-wide">Cliente</h3>
+            {/* ── Cliente ── */}
+            <div className="border-t border-slate-200 mt-6 pt-6">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4">
+                <div className="flex items-center gap-2 text-slate-800">
+                  <IconUser className="text-blue-600" size={20} />
+                  <h3 className="font-bold text-sm uppercase tracking-wide">Cliente</h3>
+                </div>
+                {!isPedidoLocked && !isEditMode && (
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevoCliente(true)}
+                    disabled={isBusy || loading}
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 disabled:opacity-40"
+                  >
+                    <IconUserPlus size={14} /> Nuevo Cliente
+                  </button>
+                )}
               </div>
-              {!isPedidoLocked && !isEditMode && (
-                <button
-                  type="button"
-                  onClick={() => setModalNuevoCliente(true)}
-                  disabled={isBusy || loading}
-                  className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 disabled:opacity-40"
-                  title="Registrar un nuevo cliente"
-                >
-                  <IconUserPlus size={14} /> Nuevo Cliente
-                </button>
-              )}
-            </div>
-
-            {isPedidoLocked && (
-              <div className="flex items-center gap-2 text-[10px] text-amber-700 bg-amber-100 px-3 py-1.5 rounded-lg mb-3 font-semibold">
-                🔒 Campo bloqueado por pedido importado
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* key fuerza re-mount del DDL tras crear cliente nuevo */}
               <DropDownClient
                 key={clienteDDLKey}
                 tenantId={TENANT_ID}
@@ -1183,242 +1404,40 @@ function CrearDocumentoVentaContent() {
                 filtroTipoDoc={filtroTipoDoc}
                 disabled={loadingEdit || isPedidoLocked}
               />
-              <FormInput
-                label="Orden de Compra"
-                name="ordencompraNumero"
-                value={(formData as any).ordencompraNumero || ""}
-                onChange={handleChange}
-                placeholder="Número O/C (opcional)"
-                className="uppercase"
-                disabled={isPedidoLocked}
-              />
-              <div className="md:col-span-2">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Observaciones</label>
-                  <textarea
-                    name="observacion"
-                    value={(formData as any).observacion || ""}
-                    onChange={(e) => updateField("observacion", e.target.value)}
-                    className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none uppercase disabled:bg-slate-50 disabled:text-slate-400"
-                    rows={2}
-                    placeholder="Observaciones adicionales..."
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
-          {/* ── Detalles ── */}
-          <div className={`bg-white p-6 rounded-xl shadow-sm border transition-all ${isPedidoLocked ? "border-amber-200" : "border-slate-200"}`}>
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-4 mt-2">
-              <div className="flex items-center gap-2 text-slate-800">
-                <IconReceipt className="text-blue-600" size={20} />
-                <h3 className="font-bold text-sm uppercase tracking-wide">Detalles del Documento</h3>
-              </div>
-              {isPedidoLocked && (
-                <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-semibold border border-blue-100">
-                  Importado desde pedido · cantidades editables
-                </span>
-              )}
-            </div>
-
-            {!isPedidoLocked && (
-              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 mb-4">
-                <p className="text-[10px] font-bold text-blue-600 uppercase mb-3">Agregar nuevo item</p>
-                <div className="grid grid-cols-12 gap-3 mb-3">
-                  <div className="col-span-12 md:col-span-6">
-                    <SearchableSelect
-                      label="Producto *"
-                      name="bienId"
-                      options={toOpts(catalogs?.bienes ?? [])}
-                      value={(nuevoDetalle as any).bienId}
-                      onChange={(e: any) => {
-                        const bienId = e.target.value;
-                        const di     = getBienDetraccionInfo(bienId);
-                        setNuevoDetalle((prev) => ({ ...(prev as any), bienId, presentacionId: "", key: di.key, detraccionPorcentaje: di.detraccionPorcentaje, afectoInafecto: di.afectoInafecto }));
-                      }}
-                      disabled={loadingCat}
-                    />
-                  </div>
-                  <div className="col-span-12 md:col-span-6">
-                    <SearchableSelect
-                      label="Presentación *"
-                      name="presentacionId"
-                      options={toOpts(presentacionesActuales)}
-                      value={(nuevoDetalle as any).presentacionId}
-                      onChange={(e: any) => {
-                        const presentacionId = e.target.value;
-                        const monedaId = (formData as any).monedaId ?? "001";
-                        const det = listaPrecioDetalles.find(
-                          (d) => d.presentacionId === presentacionId
-                        );
-                        let precio = 0;
-                        if (det) {
-                          if (monedaId === "002") precio = det.precio_nuevo_minimo_dol ?? 0;
-                          else if (monedaId === "003") precio = det.precio_nuevo_minimo_eur ?? 0;
-                          else precio = det.precio_nuevo_minimo ?? 0;
-                        }
-                        setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));
-                      }}
-                      disabled={loadingCat || !(nuevoDetalle as any).bienId || presentacionesActuales.length === 0}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-12 gap-3 items-end">
-                  <div className="col-span-3">
-                    <FormInput
-                      label="Cantidad *" type="number" min={0.01} step="0.01"
-                      value={(nuevoDetalle as any).cantidad}
-                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: parseFloat(e.target.value) || 0 }))}
-                      className="text-center font-mono"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 block mb-1.5">Conversión</label>
-                    <div className="h-[42px] flex items-center justify-center border border-slate-100 rounded-lg bg-slate-50 font-mono text-sm text-slate-600">
-                      {(nuevoDetalle as any).bienId && (nuevoDetalle as any).presentacionId
-                        ? ((nuevoDetalle as any).cantidad * getPresentacionFactor((nuevoDetalle as any).bienId, (nuevoDetalle as any).presentacionId)).toFixed(2)
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="col-span-3">
-                    <FormInput
-                      label={`Precio (${monedaLabel}) *`} type="number" min={0} step="0.01"
-                      value={(nuevoDetalle as any).precio}
-                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), precio: parseFloat(e.target.value) || 0 }))}
-                      className="text-right font-mono"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <FormInput
-                      label="Descuento" type="number" min={0} step="0.01"
-                      value={(nuevoDetalle as any).descuentoProducto || 0}
-                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), descuentoProducto: parseFloat(e.target.value) || 0 }))}
-                      className="text-right font-mono"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 block mb-1.5">Importe est.</label>
-                    <div className="h-[42px] flex items-center justify-end px-3 border border-slate-100 rounded-lg bg-slate-50 font-mono text-sm font-bold text-slate-700">
-                      {formatMoney(Math.max(0, (nuevoDetalle as any).cantidad * (nuevoDetalle as any).precio - ((nuevoDetalle as any).descuentoProducto || 0)))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={handleAgregarDetalle}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-all active:scale-95 text-sm"
-                  >
-                    <IconPlus size={16} /> Agregar item
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-800 text-white uppercase font-semibold text-[10px]">
-                  <tr>
-                    <th className="p-3 w-10 text-center">Item</th>
-                    <th className="p-3 w-24">Código</th>
-                    <th className="p-3">Producto</th>
-                    <th className="p-3 text-center w-24">Cant.</th>
-                    <th className="p-3 w-32">Presentación</th>
-                    <th className="p-3 text-center w-24">Conversión</th>
-                    <th className="p-3 text-right w-28">Precio</th>
-                    <th className="p-3 text-right w-28">Importe</th>
-                    <th className="p-3 text-center w-16">Afecto</th>
-                    <th className="p-3 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {(detalles as any[]).length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="p-8 text-center text-slate-400 italic bg-slate-50/50 border border-dashed border-slate-200">
-                        No hay items. Seleccione un producto y agréguelo con el formulario de arriba.
-                      </td>
-                    </tr>
-                  ) : (
-                    (detalles as any[]).map((det: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="p-3 text-center text-slate-400 font-mono font-bold">{det.item}</td>
-                        <td className="p-3 font-mono text-slate-500 text-[10px] uppercase">{det.bienId}</td>
-                        <td className="p-3">
-                          <span className="font-semibold text-slate-800 block leading-tight uppercase">{getBienNombre(det.bienId)}</span>
-                          {det.key && det.key !== "000" && (
-                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded uppercase">
-                              Det. {det.key} {det.detraccionPorcentaje}%
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center font-mono">
-                          {isPedidoLocked ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <input
-                                type="number"
-                                min={1}
-                                max={det.saldoCantidad ?? det.cantidad}
-                                step="1"
-                                value={det.cantidad}
-                                onChange={(e) => handleCantidadChange(idx, parseInt(e.target.value) || 0)}
-                                className="w-20 border border-slate-300 rounded px-2 py-1 text-center text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                              {det.saldoCantidad != null && (
-                                <span className="text-[9px] text-slate-400">máx: {det.saldoCantidad}</span>
-                              )}
-                            </div>
-                          ) : (
-                            det.cantidad.toFixed(2)
-                          )}
-                        </td>
-                        <td className="p-3 text-slate-600 text-[10px] uppercase">{getPresentacionNombre(det.bienId, det.presentacionId)}</td>
-                        <td className="p-3 text-center font-mono text-slate-600">{(det.conversionTotal ?? det.cantidad).toFixed(2)}</td>
-                        <td className="p-3 text-right font-mono">{monedaLabel} {det.precio.toFixed(4)}</td>
-                        <td className="p-3 text-right font-mono font-semibold text-slate-800">{monedaLabel} {(det.importe || 0).toFixed(2)}</td>
-                        <td className="p-3 text-center">
-                          <input type="checkbox" checked={det.afectoInafecto ?? true} readOnly className="w-3.5 h-3.5 accent-blue-600 cursor-default" />
-                        </td>
-                        <td className="p-3 text-center">
-                          <button onClick={() => handleEliminarDetalle(idx)} className="text-slate-400 hover:text-red-500 transition-colors">
-                            <IconTrash size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Columna derecha ── */}
-        <div className="col-span-12 lg:col-span-4 space-y-6 self-start sticky top-6">
-
+          {/* ── Condiciones de Pago ── */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <SectionTitle title="Condiciones de Pago" icon={IconCalendar} />
             <div className="space-y-4">
-
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Moneda *</label>
-                <select name="monedaId" value={(formData as any).monedaId} onChange={handleChange}
+                <select name="monedaId" value={(formData as any).monedaId} onChange={handleMonedaChange}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                   {catalogs?.monedas && catalogs.monedas.length > 0
                     ? catalogs.monedas.map((m) => <option key={m.key} value={m.key.toString()}>{m.key} - {m.value}</option>)
-                    : (<><option value="001">001 - SOLES</option><option value="002">002 - DÓLARES</option><option value="003">003 - EUROS</option></>)
+                    : (<><option value="001">001 - SOLES</option><option value="002">002 - DÓLARES</option></>)
                   }
                 </select>
               </div>
 
-              <FormInput label="Tipo de Cambio" type="number" step="0.001" min={0} name="tipoCambio"
-                value={(formData as any).tipoCambio ?? 1} onChange={handleChange} className="font-mono" />
+              {(formData as any).monedaId && (formData as any).monedaId !== "001" && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <IconCurrencyDollar size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-xs text-blue-700">
+                    Tipo de cambio (venta):{" "}
+                    <strong className="font-mono">
+                      {((formData as any).tipoCambio ?? 1).toFixed(3)}
+                    </strong>
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Condición de Pago *</label>
-                <select value={(formData as any).condicionPago ?? ""} onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); }}
+                <select value={(formData as any).condicionPago ?? ""}
+                  onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); }}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                   <option value="">Seleccione...</option>
                   {condicionesPago.map((cp: any) => {
@@ -1449,11 +1468,8 @@ function CrearDocumentoVentaContent() {
               {isCondicionGratuita && (
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tipo de Operación Gratuita *</label>
-                  <select
-                    value={(formData as any).tipoopegratuitaId ?? "00"}
-                    onChange={(e) => updateField("tipoopegratuitaId", e.target.value)}
-                    className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase"
-                  >
+                  <select value={(formData as any).tipoopegratuitaId ?? "00"} onChange={(e) => updateField("tipoopegratuitaId", e.target.value)}
+                    className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                     {tiposOpeGratuita.map((tog) => (
                       <option key={tog.tipoopegratuitaId} value={tog.tipoopegratuitaId}>
                         {tog.tipoopegratuitaId} – {tog.descripcion}
@@ -1465,8 +1481,12 @@ function CrearDocumentoVentaContent() {
 
               {isCondicionCredito && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <FormInput label="Fecha Vencimiento *" type="date" name="fechaVencimiento"
-                    value={(formData as any).fechaVencimiento || ""} onChange={handleChange} />
+                  <DateInput
+                    label="Fecha Vencimiento *"
+                    name="fechaVencimiento"
+                    value={(formData as any).fechaVencimiento || ""}
+                    onChange={handleChange}
+                  />
                 </div>
               )}
 
@@ -1484,44 +1504,307 @@ function CrearDocumentoVentaContent() {
               )}
             </div>
           </div>
+        </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-slate-800 px-6 py-3">
-              <h3 className="text-white font-bold text-sm uppercase tracking-wide flex items-center gap-2">
-                <IconCurrencyDollar size={18} /> Resumen
-              </h3>
+        {/* ── Columna derecha: Resumen ── */}
+        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-800 px-5 py-4">
+              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
             </div>
-            <div className="p-6 space-y-3">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Gravado (Base)</span>
-                <span className="font-mono font-bold text-slate-700">{monedaLabel} {formatMoney(totales.valorventaAfecto)}</span>
+            <div className="p-5 space-y-4">
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                {[
+                  { label: "Total Gravado",   val: totales.gravado   },
+                  { label: "Total Exonerado", val: totales.exonerado },
+                  { label: "Total Gratuito",  val: totales.gratuito  },
+                  { label: "IGV (18%)",       val: totales.igv       },
+                ].map(({ label, val }) => (
+                  <div key={label} className="flex justify-between items-center py-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">{label}</span>
+                    <span className="text-base font-mono font-bold text-slate-800">{monedaLabel} {formatMoney(val)}</span>
+                  </div>
+                ))}
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Inafecto</span>
-                <span className="font-mono font-bold text-slate-700">{monedaLabel} {formatMoney(totales.valorventaInafecto)}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">IGV (18%)</span>
-                <span className="font-mono font-bold text-slate-700">{monedaLabel} {formatMoney(totales.igv)}</span>
-              </div>
-              <div className="border-t border-slate-200 my-2" />
-              <div className="flex justify-between items-center">
-                <span className="text-slate-800 font-bold text-base">TOTAL</span>
-                <span className="font-mono font-bold text-xl text-blue-700">{monedaLabel} {formatMoney(totales.total)}</span>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-3 mt-4 text-center">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Items en el documento</span>
-                <span className="text-2xl font-bold text-slate-700">{(detalles as any[]).length}</span>
+              <div className="border-t-2 border-blue-600 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
+                  <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totales.total)}</span>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-xs text-blue-800">
-            <p className="font-bold mb-1">Nota:</p>
-            <p>Los precios incluyen IGV. El sistema calculará automáticamente el valor de venta (base) y el IGV al 18% para items afectos.</p>
           </div>
         </div>
       </div>
+
+      {/* ── Detalles del Documento ── */}
+      <div className={`bg-white p-6 rounded-xl shadow-sm border transition-all mt-6 ${isPedidoLocked ? "border-amber-200" : "border-slate-200"}`}>
+        <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-4 mt-2">
+          <div className="flex items-center gap-2 text-slate-800">
+            <IconReceipt className="text-blue-600" size={20} />
+            <h3 className="font-bold text-sm uppercase tracking-wide">Detalles del Documento</h3>
+          </div>
+          {isPedidoLocked && (
+            <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-semibold border border-blue-100">
+              Importado desde pedido · cantidades editables
+            </span>
+          )}
+        </div>
+
+        {/* ── Barra: lista de precios + stock ── */}
+        {!isPedidoLocked && !isReadOnly && (
+          <div className="flex items-center justify-end gap-2 mb-3">
+            {listasPrecios.length > 0 && (
+              <select
+                value={selectedListaId}
+                disabled={loadingCat}
+                onChange={(e) => {
+                  setSelectedListaId(e.target.value);
+                  setPrecioLimitesNuevo(null);
+                  setNuevoDetalle({ ...emptyDetalle });
+                }}
+                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
+              >
+                {listasPrecios.map((lp) => (
+                  <option key={lp.listaprecioId} value={lp.listaprecioId}>
+                    {lp.descripcion || lp.codigo_lista}
+                  </option>
+                ))}
+              </select>
+            )}
+            {(nuevoDetalle as any).bienId && (
+              <button
+                type="button"
+                onClick={() => setShowStock(true)}
+                className="px-3 py-1.5 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                Ver stock disponible
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-800 text-white uppercase font-semibold text-[10px]">
+              <tr>
+                <th className="p-3 w-10 text-center">Item</th>
+                <th className="p-3 w-24">Código</th>
+                <th className="p-3">Producto</th>
+                <th className="p-3 text-center w-24">Cant.</th>
+                <th className="p-3 w-32">Presentación</th>
+                <th className="p-3 text-center w-24">Conversión</th>
+                <th className="p-3 text-right w-28">Precio</th>
+                <th className="p-3 text-right w-28">Importe</th>
+                <th className="p-3 text-center w-16">Afecto</th>
+                <th className="p-3 w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(detalles as any[]).length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-3 text-center text-slate-400 italic text-[11px]">
+                    Sin ítems aún — usa la fila de abajo para agregar productos.
+                  </td>
+                </tr>
+              )}
+              {(detalles as any[]).map((det: any, idx: number) => (
+                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-3 text-center text-slate-400 font-mono font-bold">{det.item}</td>
+                  <td className="p-3 font-mono text-slate-500 text-[10px] uppercase">{det.bienId}</td>
+                  <td className="p-3">
+                    <span className="font-semibold text-slate-800 block leading-tight uppercase">{getBienNombre(det.bienId)}</span>
+                    {det.key && det.key !== "000" && (
+                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded uppercase">
+                        Det. {det.key} {det.detraccionPorcentaje}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3 text-center font-mono">
+                    {(isPedidoLocked || (isEditMode && !isReadOnly)) ? (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <input
+                          type="number" min={0.01} max={det.saldoCantidad ?? undefined} step="0.01"
+                          value={det.cantidad}
+                          onChange={(e) => handleCantidadChange(idx, parseFloat(e.target.value) || 0)}
+                          className="w-20 border border-slate-300 rounded px-2 py-1 text-center text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {det.saldoCantidad != null && (
+                          <span className="text-[9px] text-slate-400">máx: {det.saldoCantidad}</span>
+                        )}
+                      </div>
+                    ) : (
+                      det.cantidad.toFixed(2)
+                    )}
+                  </td>
+                  <td className="p-3 text-slate-600 text-[10px] uppercase">{getPresentacionNombre(det.bienId, det.presentacionId)}</td>
+                  <td className="p-3 text-center font-mono text-slate-600">{(det.conversionTotal ?? det.cantidad).toFixed(2)}</td>
+                  <td className="p-3 text-right font-mono">
+                    {(isEditMode && !isReadOnly) ? (
+                      <input
+                        type="number" min={0} step="0.0001" value={det.precio}
+                        onChange={(e) => handlePrecioChange(idx, parseFloat(e.target.value) || 0)}
+                        className="w-24 border border-slate-300 rounded px-2 py-1 text-right text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <>{monedaLabel} {det.precio.toFixed(4)}</>
+                    )}
+                  </td>
+                  <td className="p-3 text-right font-mono font-semibold text-slate-800">{monedaLabel} {(det.importe || 0).toFixed(2)}</td>
+                  <td className="p-3 text-center">
+                    {det.afectoInafecto === false ? (
+                      <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-green-600">Afecto</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-center">
+                    {!isReadOnly && (
+                      <button onClick={() => handleEliminarDetalle(idx)} className="text-slate-400 hover:text-red-500 transition-colors">
+                        <IconTrash size={16} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+
+              {/* ── Fila de agregar inline (solo en modo creación, no pedido importado y no readonly) ── */}
+              {!isPedidoLocked && !isReadOnly && (
+                <tr className="bg-blue-50/30 border-t-2 border-dashed border-blue-200">
+                  <td className="p-2 text-center text-blue-400 font-mono font-bold text-sm select-none">+</td>
+                  <td className="p-1.5 text-[10px] text-slate-400 font-mono">—</td>
+                  <td className="p-1.5 min-w-[220px]">
+                    <SearchableSelect
+                      name="nuevo_bienId"
+                      options={bienesDisponibles}
+                      value={(nuevoDetalle as any).bienId ?? ""}
+                      disabled={loadingCat}
+                      placeholder="Buscar producto..."
+                      onChange={async (e: any) => {
+                        const bienId = e.target.value;
+                        setPresentacionesNuevo([]);
+                        setPrecioLimitesNuevo(null);
+                        setNuevoDetalle((prev) => ({
+                          ...(prev as any),
+                          bienId,
+                          presentacionId: "",
+                          precio:         0,
+                        }));
+                        // Cargar presentaciones y producto en paralelo
+                        setLoadingPres(true);
+                        const [producto, presRes] = await Promise.allSettled([
+                          cargarProducto(bienId),
+                          presentacionService.getByBien(bienId, true),
+                        ]);
+                        setLoadingPres(false);
+                        // Presentaciones
+                        if (presRes.status === "fulfilled") {
+                          const items = (presRes.value?.data ?? []).map((p: any) => ({
+                            key:    p.presentacionId,
+                            value:  p.descripcion,
+                            factor: p.cantidad ?? 1,
+                          }));
+                          setPresentacionesNuevo(items);
+                        }
+                        // Detracción / afecto
+                        const prod = producto.status === "fulfilled" ? producto.value : null;
+                        const di = prod
+                          ? {
+                              key:                  prod.detraccionbienserviceId ?? "000",
+                              detraccionPorcentaje: prod.detraccion_porcentaje   ?? 0,
+                              afectoInafecto:       prod.afecto_inafecto         ?? true,
+                            }
+                          : getBienDetraccionInfo(bienId);
+                        setNuevoDetalle((prev) => ({
+                          ...(prev as any),
+                          key:                  di.key,
+                          detraccionPorcentaje: di.detraccionPorcentaje,
+                          afectoInafecto:       di.afectoInafecto,
+                        }));
+                      }}
+                    />
+                  </td>
+                  <td className="p-1.5 w-24">
+                    <input
+                      type="number" min={0.01} step="0.01"
+                      value={(nuevoDetalle as any).cantidad}
+                      disabled={loadingCat}
+                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: parseFloat(e.target.value) || 0 }))}
+                      className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
+                    />
+                  </td>
+                  <td className="p-1.5 min-w-[130px]">
+                    <select
+                      value={(nuevoDetalle as any).presentacionId ?? ""}
+                      disabled={loadingCat || loadingPres || !(nuevoDetalle as any).bienId}
+                      onChange={(e) => handlePresentacionNuevoChange(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                    >
+                      <option value="">{loadingPres ? "Cargando..." : "-- Presentación --"}</option>
+                      {presentacionOptsNuevo.map((p) => (
+                        <option key={p.key} value={p.key}>{p.value}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-2 text-center font-mono text-xs text-slate-400">
+                    {(nuevoDetalle as any).bienId && (nuevoDetalle as any).presentacionId
+                      ? ((nuevoDetalle as any).cantidad * getPresentacionFactor((nuevoDetalle as any).bienId, (nuevoDetalle as any).presentacionId)).toFixed(2)
+                      : "—"}
+                  </td>
+                  <td className="p-1.5 w-28">
+                    <input
+                      type="number" min={precioLimitesNuevo?.min ?? 0} step="0.01"
+                      value={(nuevoDetalle as any).precio}
+                      disabled={loadingCat}
+                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), precio: parseFloat(e.target.value) || 0 }))}
+                      className={`w-full border rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 transition-all disabled:bg-slate-50 ${
+                        precioLimitesNuevo && (nuevoDetalle as any).precio < precioLimitesNuevo.min
+                          ? "border-red-400 focus:ring-red-400 bg-red-50"
+                          : "border-slate-200 focus:ring-blue-500"
+                      }`}
+                    />
+                    {precioLimitesNuevo && precioLimitesNuevo.min > 0 && (
+                      <p className="text-[9px] text-slate-400 mt-0.5">Mín: {precioLimitesNuevo.min.toFixed(2)}</p>
+                    )}
+                  </td>
+                  <td className="p-2 text-right font-mono text-xs text-slate-500">
+                    {(nuevoDetalle as any).bienId
+                      ? formatMoney(Math.max(0, (nuevoDetalle as any).cantidad * (nuevoDetalle as any).precio - ((nuevoDetalle as any).descuentoProducto || 0)))
+                      : "—"}
+                  </td>
+                  <td className="p-2 text-center">
+                    {(nuevoDetalle as any).bienId
+                      ? (nuevoDetalle as any).afectoInafecto === false
+                        ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                        : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
+                      : <span className="text-slate-300 text-[10px]">—</span>
+                    }
+                  </td>
+                  <td className="p-2 text-center">
+                    <button
+                      type="button"
+                      onClick={handleAgregarDetalle}
+                      className="h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center mx-auto transition-all active:scale-95"
+                      title="Agregar ítem"
+                    >
+                      <IconPlus size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showStock && (nuevoDetalle as any).bienId && (
+        <StockDisponible
+          empresaId={EMPRESA_ID}
+          bienId={(nuevoDetalle as any).bienId}
+          bienNombre={getBienNombre((nuevoDetalle as any).bienId)}
+          onClose={() => setShowStock(false)}
+        />
+      )}
 
       {/* ── Modales ── */}
       {modalImportar && (
@@ -1531,7 +1814,6 @@ function CrearDocumentoVentaContent() {
           onClose={() => setModalImportar(false)}
         />
       )}
-
       {modalNuevoCliente && (
         <ClienteFormModal
           isOpen={modalNuevoCliente}
@@ -1543,10 +1825,6 @@ function CrearDocumentoVentaContent() {
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Export con Suspense
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function CrearDocumentoVentaPage() {
   return (

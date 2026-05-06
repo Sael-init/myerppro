@@ -48,6 +48,21 @@ export default function ClientesPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState<Cliente | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
+  const handleOpenEdit = async (row: Cliente) => {
+    if (!row.clienteId) return;
+    setLoadingEdit(true);
+    try {
+      const full = await clienteService.getById(row.clienteId);
+      setSelected(full);
+    } catch {
+      setSelected(row);
+    } finally {
+      setLoadingEdit(false);
+      setShowForm(true);
+    }
+  };
 
   const [catalogs, setCatalogs] = useState<FormDropdowns | null>(null);
 
@@ -199,10 +214,7 @@ export default function ClientesPage() {
     render: (row: Cliente) => (
         <div className="flex justify-center">
             <ActionMenu 
-                onEdit={row.estado ? () => {
-                    setSelected(row);
-                    setShowForm(true);
-                } : undefined}
+                onEdit={row.estado ? () => handleOpenEdit(row) : undefined}
                 onAnular={row.estado ? () => {
                     if (!row.clienteId) return;
                     handleAction(row.clienteId, "anular");

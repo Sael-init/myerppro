@@ -74,6 +74,8 @@ export interface Cliente {
   direccionesExtras?: DireccionExtra[];
   /** IDs de empresas (RUC) que este cliente DNI representa legalmente */
   empresasAsociadasIds?: string[];
+  /** Empresas vinculadas al cliente (representante legal) — viene del GET */
+  representante_legal?: Array<{ clienteId?: string; descripcion: string; num_docident: string; docidentId?: string }>;
   // ──────────────────────────────────────────────────────────────────────────
 
   // Objetos relacionados (GET)

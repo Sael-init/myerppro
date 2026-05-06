@@ -39,20 +39,36 @@ class DocumentoVentaService {
     page = 1,
     pageSize = 20,
     search?: string,
-    _filters?: FiltrosDocumentoVenta
+    filters?: FiltrosDocumentoVenta
   ): Promise<PaginatedResult> {
     try {
       const params: Record<string, any> = { page, pageSize };
       if (search?.trim()) params.search = search.trim();
 
+      if (filters) {
+        const cleaned: Record<string, any> = {};
+        let hasData = false;
+        Object.entries(filters).forEach(([key, val]) => {
+          if (Array.isArray(val) ? val.length > 0 : val !== undefined && val !== null && val !== '') {
+            cleaned[key] = val;
+            hasData = true;
+          }
+        });
+        if (hasData) params.filters = JSON.stringify(cleaned);
+      }
+
       const { data: api } = await apiClient.get(`${this.base}/empresa/${empresaId}`, { params });
+      // El backend hace Ok(ApiResponse.SuccessPaginated(...)), lo que genera doble-envoltura:
+      // { contentTypes, formatters, statusCode, value: { data: [...], meta: {...} } }
+      // Intentamos api.value primero, si no existe usamos api directamente
+      const payload = api.value ?? api;
       return {
-        data: api.data ?? [],
+        data: payload.data ?? [],
         meta: {
-          totalRecords: api.meta?.totalRecords ?? 0,
-          totalPages:   api.meta?.totalPages   ?? 1,
-          currentPage:  api.meta?.currentPage  ?? page,
-          pageSize:     api.meta?.pageSize      ?? pageSize,
+          totalRecords: payload.meta?.totalRecords ?? 0,
+          totalPages:   payload.meta?.totalPages   ?? 1,
+          currentPage:  payload.meta?.currentPage  ?? page,
+          pageSize:     payload.meta?.pageSize      ?? pageSize,
         },
       };
     } catch (err: any) {
@@ -83,13 +99,14 @@ class DocumentoVentaService {
       if (search?.trim()) params.search = search.trim();
 
       const { data: api } = await apiClient.get(`${this.base}/puntoventa/${puntoventaId}`, { params });
+      const payload = api.value ?? api;
       return {
-        data: api.data ?? [],
+        data: payload.data ?? [],
         meta: {
-          totalRecords: api.meta?.totalRecords ?? 0,
-          totalPages:   api.meta?.totalPages   ?? 1,
-          currentPage:  api.meta?.currentPage  ?? page,
-          pageSize:     api.meta?.pageSize      ?? pageSize,
+          totalRecords: payload.meta?.totalRecords ?? 0,
+          totalPages:   payload.meta?.totalPages   ?? 1,
+          currentPage:  payload.meta?.currentPage  ?? page,
+          pageSize:     payload.meta?.pageSize      ?? pageSize,
         },
       };
     } catch (err: any) {
@@ -301,6 +318,56 @@ class DocumentoVentaService {
     }
   }
 
+  // ── Crear DV + GR en un solo paso ───────────────────────────────────────────
+
+  /**
+   * Crea un Documento de Venta y su Guía de Remisión en una sola transacción.
+   * POST /DocumentoVenta/DocumentoConGuiaRemision
+   *
+   * El DTO combina los campos del DV (CreateDocumentoVentaDTO) más un campo
+   * `guiaRemision` con el payload de la guía.
+   */
+  async crearConGuiaRemision(dto: any): Promise<any> {
+    try {
+      const body = {
+        ...dto,
+        cuentausuarioId: dto.cuentausuarioId?.trim() || 'CU0001',
+      };
+      const { data: api } = await apiClient.post(`${this.base}/DocumentoConGuiaRemision`, body);
+      return api.data ?? api;
+    } catch (err: any) {
+      const apiMessage =
+        err.response?.data?.message ??
+        err.response?.data?.error   ??
+        err.response?.data?.title   ??
+        (typeof err.response?.data === 'string' ? err.response.data : null);
+
+      console.error('[DocumentoVentaService.crearConGuiaRemision] Error:', {
+        status: err.response?.status,
+        data:   err.response?.data,
+      });
+
+      throw new Error(apiMessage ?? 'Error al crear el documento con guía de remisión');
+    }
+  }
+
+  // ── Asociar Guía de Remisión ─────────────────────────────────────────────────
+
+async actualizarGuiaRemision(
+  documentoventaId: string,
+  guiaremisionId: string
+): Promise<any> {
+  try {
+    const { data } = await apiClient.patch(
+      `${this.base}/${documentoventaId}/guia-remision`,
+      null,
+      { params: { guiaremisionId } }
+    );
+    return data;
+  } catch (err: any) {
+    throw new Error(err.response?.data?.message ?? 'Error al asociar la guía de remisión al documento de venta');
+  }
+}
   // ── Dropdowns ───────────────────────────────────────────────────────────────
 
   async getFormDropdowns(
@@ -389,6 +456,29 @@ class DocumentoVentaService {
       };
     } catch (err: any) {
       throw new Error(err.response?.data?.message ?? 'Error al comprometer el pedido de venta');
+    }
+  }
+
+  // ── NC/ND ───────────────────────────────────────────────────────────────────
+
+  async getMotivosNcNd(): Promise<Array<{ motivoelectronicoId: string; tipodocumento: string; concepto: string }>> {
+    try {
+      const { data: api } = await apiClient.get(`${this.base}/motivosNcNd`);
+      const payload = api.value ?? api;
+      return payload.data ?? payload ?? [];
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al obtener motivos NC/ND');
+    }
+  }
+
+  async getIgvVigente(): Promise<number> {
+    try {
+      const { data: api } = await apiClient.get(`${this.base}/igvVigente`);
+      const payload = api.value ?? api;
+      const val = payload.data?.igv ?? payload.data?.porcentaje ?? payload.igv ?? payload.porcentaje ?? 18;
+      return val > 1 ? val / 100 : val;
+    } catch {
+      return 0.18;
     }
   }
 

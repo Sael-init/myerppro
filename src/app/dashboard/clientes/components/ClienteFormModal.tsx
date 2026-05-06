@@ -22,6 +22,7 @@ import type {
   UbigeoOption,
 } from "@/types/cliente.types";
 import SearchableSelect from "@/components/forms/SearchableSelect";
+import DateInput from "@/components/forms/DateInput";
 import ExternalSearchInput, {
   type SearchType,
 } from "@/components/forms/ExternalSearchInput";
@@ -208,7 +209,7 @@ function UbigeoPickerModal({
   isOpen,
   onClose,
   onConfirm,
-  initialUbidst = "",
+  initialUbidst: _initialUbidst = "",
 }: UbigeoPickerModalProps) {
   const [paisesOpts,        setPaisesOpts]        = useState<UbigeoOption[]>([]);
   const [depOpts,           setDepOpts]           = useState<UbigeoOption[]>([]);
@@ -455,7 +456,7 @@ export default function ClienteFormModal({
       telefono_movil2: clienteToEdit?.telefono_movil2 || "",
       email:        clienteToEdit?.email        || "",
       tipoclienteId: clienteToEdit?.tipoclienteId || "",
-      sexo:         clienteToEdit?.sexo         || "",
+      sexo:         (clienteToEdit?.sexo ?? "").trim() || "",
       fecha_nac:    clienteToEdit?.fecha_nac    || "",
       estado_civil: clienteToEdit?.estado_civil || "",
       website:      clienteToEdit?.website      || "",
@@ -485,27 +486,51 @@ export default function ClienteFormModal({
     setForm(getInitialState());
     setUbigeoState(getInitialUbigeoState());
     const extrasFromEdit = clienteToEdit?.direccionesExtras;
-    setDireccionesExtras(
-      extrasFromEdit && extrasFromEdit.length > 0
-        ? extrasFromEdit.map((d) => ({
-            _tempId:     genId(),
-            direccion:   d.direccion || "",
-            ubidst:      d.ubidst    || "",
-            ubidstLabel: d.ubidst    || "",   // sin label previo, mostramos el código
-          }))
-        : [emptyDireccion()]
+    if (extrasFromEdit && extrasFromEdit.length > 0) {
+      const initial = extrasFromEdit.map((d) => ({
+        _tempId:     genId(),
+        direccion:   d.direccion || "",
+        ubidst:      d.ubidst    || "",
+        ubidstLabel: d.ubidst    || "",
+      }));
+      setDireccionesExtras(initial);
+      // Resolver labels de ubidst en paralelo
+      Promise.all(
+        initial.map((d) =>
+          d.ubidst ? clienteService.getLabelByUbidst(d.ubidst) : Promise.resolve("")
+        )
+      ).then((labels) => {
+        setDireccionesExtras((prev) =>
+          prev.map((d, i) => ({ ...d, ubidstLabel: labels[i] || d.ubidst }))
+        );
+      });
+    } else {
+      setDireccionesExtras([emptyDireccion()]);
+    }
+    // Cargar empresas vinculadas (representante_legal) si viene del API
+    const repLegal = clienteToEdit?.representante_legal;
+    setEmpresasAsociadas(
+      repLegal && repLegal.length > 0
+        ? repLegal.map((r) => ({
+            clienteId:    r.clienteId,
+            descripcion:  r.descripcion,
+            num_docident: r.num_docident,
+            docidentId:   r.docidentId ?? "",
+            estado:       true,
+          } as Cliente))
+        : []
     );
-    setEmpresasAsociadas([]);
     setEmpresaSearch("");
     setEmpresaResults([]);
   }, [isOpen, clienteToEdit?.clienteId]);
 
-  // Precarga de resultados al entrar al tab de direcciones
+  // Precarga de resultados al entrar al tab de direcciones o al abrir el modal
   useEffect(() => {
-    if (activeTab === "direcciones" && empresaResults.length === 0) {
+    if (!isOpen) return;
+    if (activeTab === "direcciones") {
       fetchEmpresaSearch("", true);
     }
-  }, [activeTab]);
+  }, [activeTab, isOpen]);
 
   // ── Catálogos ───────────────────────────────────────────────────────────
 
@@ -838,6 +863,11 @@ export default function ClienteFormModal({
             <IconLoader className="animate-spin text-blue-600 mb-4" size={48} />
             <p className="text-slate-400 text-sm">Guardando cliente...</p>
           </div>
+        ) : isEdit && !catalogs ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <IconLoader className="animate-spin text-blue-600 mb-4" size={48} />
+            <p className="text-slate-400 text-sm">Cargando datos del cliente...</p>
+          </div>
         ) : (
           <div className="space-y-6">
 
@@ -905,9 +935,13 @@ export default function ClienteFormModal({
                       options={[{ key: "M", value: "Masculino" }, { key: "F", value: "Femenino" }]}
                       value={form.sexo} onChange={handleChange("sexo")}
                       disabled={isReadOnly} placeholder="Seleccionar..." />
-                    <FormInput label="Fecha de Nacimiento" type="date" value={form.fecha_nac}
-                      onChange={handleChange("fecha_nac") as (e: ChangeEvent<HTMLInputElement>) => void}
-                      disabled={isReadOnly} />
+                    <DateInput
+                      label="Fecha de Nacimiento"
+                      name="fecha_nac"
+                      value={form.fecha_nac}
+                      onChange={handleChange("fecha_nac") as any}
+                      disabled={isReadOnly}
+                    />
                     <SearchableSelect label="Estado Civil" name="estado_civil"
                       options={[
                         { key: "SOLTERO", value: "Soltero" }, { key: "CASADO", value: "Casado" },
@@ -1094,7 +1128,7 @@ export default function ClienteFormModal({
                     </h3>
 
                     {!isReadOnly && (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         <div className="flex gap-2">
                           <input
                             className="flex-1 border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase"
@@ -1111,57 +1145,36 @@ export default function ClienteFormModal({
                           </button>
                         </div>
 
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <p className="text-xs font-bold text-slate-400 uppercase px-4 pt-2.5 pb-1">Resultados</p>
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-blue-600 text-white">
-                                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase">Tipo Doc</th>
-                                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase">Num Doc</th>
-                                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase">Razón Social</th>
-                                <th className="px-4 py-2.5" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {loadingEmpresaSearch ? (
-                                <tr>
-                                  <td colSpan={4} className="text-center py-6 text-slate-400">
-                                    <IconLoader className="animate-spin inline-block mr-2" size={16} /> Buscando...
-                                  </td>
-                                </tr>
-                              ) : empresaResults.length === 0 ? (
-                                <tr>
-                                  <td colSpan={4} className="text-center py-6 text-slate-400 text-sm">
-                                    No se encontraron empresas
-                                  </td>
-                                </tr>
-                              ) : (
-                                empresaResults.map((c) => {
-                                  const isAdded = empresasAsociadas.some((e) => e.clienteId === c.clienteId);
-                                  return (
-                                    <tr key={c.clienteId} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
-                                      <td className="px-4 py-2.5 text-slate-600 font-medium uppercase">{c.docidentId}</td>
-                                      <td className="px-4 py-2.5 text-slate-600 font-mono">{c.num_docident}</td>
-                                      <td className="px-4 py-2.5 text-slate-800 font-medium uppercase">{c.descripcion}</td>
-                                      <td className="px-4 py-2.5 text-right">
-                                        {isAdded ? (
-                                          <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-bold">
-                                            <IconCheck size={14} /> Agregado
-                                          </span>
-                                        ) : (
-                                          <button type="button" onClick={() => addEmpresa(c)}
-                                            className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">
-                                            <IconPlus size={14} /> Agregar
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                        {/* Resultados de búsqueda */}
+                        {empresaResults.length > 0 && (
+                          <div className="border border-slate-200 rounded-lg overflow-hidden">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase px-3 py-1.5 bg-slate-50 border-b border-slate-100">
+                              Resultados ({empresaResults.length})
+                            </p>
+                            <ul className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+                              {empresaResults.map((emp) => {
+                                const yaAgregada = empresasAsociadas.some((e) => e.clienteId === emp.clienteId);
+                                return (
+                                  <li key={emp.clienteId} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50">
+                                    <div>
+                                      <p className="text-xs font-semibold text-slate-800 uppercase">{emp.descripcion}</p>
+                                      <p className="text-[10px] text-slate-500 font-mono">{emp.num_docident}</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addEmpresa(emp)}
+                                      disabled={yaAgregada}
+                                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ml-2"
+                                    >
+                                      <IconPlus size={12} />
+                                      {yaAgregada ? "Agregada" : "Agregar"}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     )}
 

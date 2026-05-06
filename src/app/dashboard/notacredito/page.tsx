@@ -7,21 +7,25 @@ import { useDebounce } from "@/hooks/useDebounce";
 import documentoVentaService from "@/services/documentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
 import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
-import Link from "next/link";
 import { toast } from "sonner";
 
 import DataTable from "@/components/shared/DataTable";
 import SidebarFiltros from "@/components/filter/FiltrosAvanzados";
 import DateInput from "@/components/forms/DateInput";
-import DocumentoVentaViewModal from "./components/VentasViewModal";
+import DocumentoVentaViewModal from "@/app/dashboard/ventas/components/VentasViewModal";
 import ActionMenu from "@/components/shared/ActionMenu";
 
 import {
   IconRefresh, IconSearch, IconFilter,
-  IconCalendar, IconUser, IconPlus, IconReceipt,
+  IconCalendar, IconUser, IconPlus,
 } from "@tabler/icons-react";
 
-// ─── Helpers estáticos (fuera del componente) ────────────────────────────────
+// ─── Constantes ──────────────────────────────────────────────────────────────
+
+const EMPRESA_ID = "005";
+
+// Siempre fijo — no se puede quitar
+const LOCKED_TIPOS_DOC = ["X037", "X067"];
 
 function getFechaLocal(offsetDias = 0): string {
   const d = new Date();
@@ -29,25 +33,16 @@ function getFechaLocal(offsetDias = 0): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// ✅ Fuera del componente → referencia estable, no se recrea en cada render
 const INITIAL_FILTERS: FiltrosDocumentoVenta = {
-  tipodoccomercialIds:  [],
+  tipodoccomercialIds:  LOCKED_TIPOS_DOC,
   estadoDocumentoSunat: [],
   monedaIds:            [],
   condicionPago:        undefined,
-  fechaDesde:           getFechaLocal(-5),
+  fechaDesde:           getFechaLocal(-30),
   fechaHasta:           getFechaLocal(0),
   estado:               undefined,
 };
 
-const TIPOS_DOC = [
-  { id: "X001", label: "Factura" },
-  { id: "X002", label: "Boleta" },
-  { id: "X028", label: "Factura Electrónica" },
-  { id: "X007", label: "Nota de Crédito" },
-  { id: "X077", label: "Nota de Débito" },
-  { id: "X029", label: "Guía de Remisión" },
-];
 const ESTADOS_SUNAT = [
   { id: "PENDIENTEXML", label: "Pendiente XML" },
   { id: "ENVIADO",      label: "Enviado" },
@@ -66,17 +61,11 @@ const MONEDAS = [
   { id: "PEN", label: "Soles (S/)" },
   { id: "USD", label: "Dólares (US$)" },
 ];
-const CONDICIONES_PAGO = [
-  { id: "CONTADO",  label: "Contado" },
-  { id: "CREDITO",  label: "Crédito" },
-  { id: "GRATUITO", label: "Gratuito" },
-];
 
-// ─── Helpers de formato (fuera del componente) ───────────────────────────────
+// ─── Helpers de formato ───────────────────────────────────────────────────────
 
 function fmtFecha(fecha: string): string {
   if (!fecha) return "-";
-  // ✅ Parsear como fecha local (agregar T00:00:00 evita desfase UTC)
   const [y, m, d] = fecha.split("T")[0].split("-");
   return `${d}/${m}/${y}`;
 }
@@ -91,45 +80,53 @@ function fmtMoneda(monto: number, abrev = "PEN"): string {
   }).format(monto);
 }
 
-// ─── Componente principal ────────────────────────────────────────────────────
+// ─── Componente principal ─────────────────────────────────────────────────────
 
-const EMPRESA_ID = "005";
-
-export default function DocumentosVentaPage() {
+export default function NotaCreditoPage() {
   const router = useRouter();
-
   const {
-    data, loading, meta,
+    data: rawData, loading, meta,
     searchTerm, setSearchTerm,
     filters, setFilters,
     fetchData, handleAction,
   } = useCrud<DocumentoVenta>(documentoVentaService, EMPRESA_ID, INITIAL_FILTERS);
 
-  const [tempFilters,        setTempFilters]        = useState<FiltrosDocumentoVenta>(INITIAL_FILTERS);
-  const [showFilters,        setShowFilters]         = useState(false);
-  const [showViewModal,      setShowViewModal]       = useState(false);
-  const [viewDocumentoId,    setViewDocumentoId]     = useState<string | null>(null);
-  const [showBoleteoModal,   setShowBoleteoModal]    = useState(false);
-  const [boleteoDocumentoId, setBoleteoDocumentoId]  = useState<string | null>(null);
-  const [serieBoleteo,       setSerieBoleteo]        = useState("");
-  const [loadingBoleteo,     setLoadingBoleteo]      = useState(false);
-  const [loadingPrint,       setLoadingPrint]        = useState(false);
+  const data = useMemo(
+    () => rawData.filter((d) => d.tipoDocumentoComercial?.abreviatura === "NC"),
+    [rawData]
+  );
+
+  const [tempFilters,     setTempFilters]     = useState<FiltrosDocumentoVenta>(INITIAL_FILTERS);
+  const [showFilters,     setShowFilters]     = useState(false);
+  const [showViewModal,   setShowViewModal]   = useState(false);
+  const [viewDocumentoId, setViewDocumentoId] = useState<string | null>(null);
+  const [loadingPrint,    setLoadingPrint]    = useState(false);
 
   const debouncedSearch = useDebounce(searchTerm, 500);
 
-  // ✅ Solo se dispara cuando cambia búsqueda o filtros, no en cada render
   useEffect(() => {
     fetchData(1, debouncedSearch, filters);
   }, [debouncedSearch, filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Filtros ───────────────────────────────────────────────────────────────
-  const handleOpenSidebar  = useCallback(() => { setTempFilters(filters); setShowFilters(true); }, [filters]);
-  const handleApplyFilters = useCallback(() => { setFilters(tempFilters); setShowFilters(false); }, [tempFilters, setFilters]);
-  const handleClearFilters = useCallback(() => { setTempFilters(INITIAL_FILTERS); setFilters(INITIAL_FILTERS); }, [setFilters]);
+  const handleOpenSidebar = useCallback(() => {
+    setTempFilters(filters);
+    setShowFilters(true);
+  }, [filters]);
+
+  // Garantiza que el filtro de tipo siempre permanece bloqueado al aplicar
+  const handleApplyFilters = useCallback(() => {
+    setFilters({ ...tempFilters, tipodoccomercialIds: LOCKED_TIPOS_DOC });
+    setShowFilters(false);
+  }, [tempFilters, setFilters]);
+
+  const handleClearFilters = useCallback(() => {
+    setTempFilters(INITIAL_FILTERS);
+    setFilters(INITIAL_FILTERS);
+  }, [setFilters]);
 
   const countActiveFilters = useMemo(() => {
     let c = 0;
-    if (tempFilters.tipodoccomercialIds?.length)  c++;
     if (tempFilters.estadoDocumentoSunat?.length) c++;
     if (tempFilters.monedaIds?.length)            c++;
     if (tempFilters.condicionPago)                c++;
@@ -145,22 +142,12 @@ export default function DocumentosVentaPage() {
     setShowViewModal(true);
   }, []);
 
-  const handleEdit = useCallback((id: string) => {
-    router.push(`/dashboard/ventas/crear/d_ventas?editId=${id}`);
-  }, [router]);
-
   const handleAnular = useCallback((id: string) => {
     handleAction(id, "anular", EMPRESA_ID);
   }, [handleAction]);
 
   const handleValidarSunat = useCallback(async (id: string) => {
     toast.info(`Validar SUNAT ${id} — próximamente`);
-  }, []);
-
-  const handleBoletear = useCallback((id: string) => {
-    setBoleteoDocumentoId(id);
-    setSerieBoleteo("");
-    setShowBoleteoModal(true);
   }, []);
 
   const handleImprimir = useCallback(async (id: string) => {
@@ -178,40 +165,13 @@ export default function DocumentosVentaPage() {
       win.document.write(html);
       win.document.close();
     } catch (err: any) {
-      console.error("[handleImprimir]", err);
       toast.error(`Error al generar la impresión: ${err.message}`);
     } finally {
       setLoadingPrint(false);
     }
   }, []);
 
-  const handleConfirmarBoleteo = useCallback(async () => {
-    if (!boleteoDocumentoId || !serieBoleteo.trim()) {
-      toast.error("La serie es obligatoria");
-      return;
-    }
-    try {
-      setLoadingBoleteo(true);
-      const resultado = await documentoVentaService.boletear(boleteoDocumentoId, serieBoleteo.trim());
-      const resData   = resultado?.data ?? resultado;
-      if (resData?.isSuccess) {
-        toast.success(resData.message ?? "Boleteo completado exitosamente");
-        if (resData.boletasConError > 0)
-          toast.warning(`${resData.boletasConError} boleta(s) tuvieron error en SUNAT`);
-        setShowBoleteoModal(false);
-        fetchData(meta.currentPage, debouncedSearch, filters);
-      } else {
-        toast.error(resData?.message ?? "Error al procesar el boleteo");
-      }
-    } catch (err: any) {
-      toast.error(err.message ?? "Error al procesar el boleteo");
-    } finally {
-      setLoadingBoleteo(false);
-    }
-  }, [boleteoDocumentoId, serieBoleteo, fetchData, meta.currentPage, debouncedSearch, filters]);
-
-  // ── Columnas — memoizadas para evitar re-render de DataTable ─────────────
-  // ✅ useMemo con dependencias estables (callbacks memoizados arriba)
+  // ── Columnas ──────────────────────────────────────────────────────────────
   const columns = useMemo(() => [
     {
       header: "Fecha Emisión",
@@ -293,7 +253,7 @@ export default function DocumentosVentaPage() {
       render:    (row: DocumentoVenta) => {
         const st = row.estado || "—";
         const cl =
-          st === "REGISTRADO"   ? "bg-blue-50 text-blue-700 border-blue-200"   :
+          st === "REGISTRADO"   ? "bg-blue-50 text-blue-700 border-blue-200"    :
           st === "COMPROMETIDO" ? "bg-amber-50 text-amber-700 border-amber-200" :
           st === "ANULADO"      ? "bg-red-50 text-red-600 border-red-200"       :
           st === "CERRADO"      ? "bg-slate-100 text-slate-500 border-slate-200":
@@ -312,11 +272,11 @@ export default function DocumentosVentaPage() {
       render:    (row: DocumentoVenta) => {
         const st = row.estado_documento_sunat || "PENDIENTE";
         const cl =
-          st.includes("101") || st.includes("ACEPTAD") ? "bg-green-50 text-green-700 border-green-200"  :
-          st.includes("108") || st.includes("ANULAD")  ? "bg-red-50 text-red-600 border-red-200"         :
-          st.includes("RECHAZAD")                       ? "bg-red-50 text-red-600 border-red-200"         :
-          st.includes("PENDIENTE")                      ? "bg-yellow-50 text-yellow-700 border-yellow-200":
-                                                          "bg-gray-50 text-gray-600 border-gray-200";
+          st.includes("101") || st.includes("ACEPTAD")  ? "bg-green-50 text-green-700 border-green-200"   :
+          st.includes("108") || st.includes("ANULAD")   ? "bg-red-50 text-red-600 border-red-200"          :
+          st.includes("RECHAZAD")                        ? "bg-red-50 text-red-600 border-red-200"          :
+          st.includes("PENDIENTE")                       ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                           "bg-gray-50 text-gray-600 border-gray-200";
         return (
           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${cl}`}>
             {st}
@@ -349,29 +309,23 @@ export default function DocumentosVentaPage() {
       className: "text-center",
       width:     "80px",
       render: (row: DocumentoVenta) => {
-        const esAnulado      = row.estado?.toUpperCase() === "ANULADO";
-        const esRegistrado   = row.estado?.toUpperCase() === "REGISTRADO";
-        const st             = (row.estado_documento_sunat ?? "").toUpperCase();
-        const esAceptado     = st.includes("101") || st.includes("ACEPTAD");
+        const esAnulado    = row.estado?.toUpperCase() === "ANULADO";
+        const esRegistrado = row.estado?.toUpperCase() === "REGISTRADO";
+        const st           = (row.estado_documento_sunat ?? "").toUpperCase();
+        const esAceptado   = st.includes("101") || st.includes("ACEPTAD");
         return (
           <ActionMenu
-            onView={        () => row.documentoventaId && handleView(row.documentoventaId)}
-            onEdit={        !esAceptado ? () => row.documentoventaId && handleEdit(row.documentoventaId) : undefined}
-            onAnular={      esRegistrado ? () => row.documentoventaId && handleAnular(row.documentoventaId) : undefined}
-            onValidarSunat={ !esAceptado ? () => row.documentoventaId && handleValidarSunat(row.documentoventaId) : undefined}
-            onBoletear={
-              row.tipodoccomercialId === "X066" && row.estado_boleteo?.toUpperCase() !== "BOLETEADO"
-                ? () => row.documentoventaId && handleBoletear(row.documentoventaId)
-                : undefined
-            }
-            onImprimir={() => row.documentoventaId && handleImprimir(row.documentoventaId)}
+            onView={         () => row.documentoventaId && handleView(row.documentoventaId)}
+            onAnular={       esRegistrado ? () => row.documentoventaId && handleAnular(row.documentoventaId) : undefined}
+            onValidarSunat={ !esAceptado  ? () => row.documentoventaId && handleValidarSunat(row.documentoventaId) : undefined}
+            onImprimir={     () => row.documentoventaId && handleImprimir(row.documentoventaId)}
             isAnulado={esAnulado}
             label={`${row.serie}-${row.numero} · ${row.estado || "ACTIVO"}`}
           />
         );
       },
     },
-  ], [handleView, handleEdit, handleAnular, handleValidarSunat, handleBoletear, handleImprimir]);
+  ], [handleView, handleAnular, handleValidarSunat, handleImprimir]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -381,13 +335,19 @@ export default function DocumentosVentaPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-            Documentos de Venta
+            Notas de Crédito
           </h1>
           <p className="text-sm text-slate-500">
-            Gestión de facturas, boletas y documentos comerciales
+            Gestión de notas de crédito electrónicas
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push("/dashboard/notacredito/crear")}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm transition-colors text-sm"
+          >
+            <IconPlus size={18} /> Nueva Nota de Crédito
+          </button>
           <button
             onClick={() => fetchData(meta.currentPage, debouncedSearch, filters)}
             className="p-2.5 bg-white border border-slate-300 rounded-lg hover:text-blue-600 shadow-sm transition-colors"
@@ -395,12 +355,6 @@ export default function DocumentosVentaPage() {
           >
             <IconRefresh size={20} className={loading ? "animate-spin" : ""} />
           </button>
-          <Link
-            href="/dashboard/ventas/crear"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95"
-          >
-            <IconPlus size={20} /> + Nuevo Documento
-          </Link>
         </div>
       </div>
 
@@ -447,18 +401,6 @@ export default function DocumentosVentaPage() {
         totalActive={countActiveFilters}
       >
         <div>
-          <p className="text-xs font-bold text-slate-600 uppercase mb-2">Tipo Documento</p>
-          <select
-            value={tempFilters.tipodoccomercialIds?.[0] ?? ""}
-            onChange={(e) => setTempFilters((p) => ({ ...p, tipodoccomercialIds: e.target.value ? [e.target.value] : [] }))}
-            className="w-full border border-slate-200 p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          >
-            <option value="">Todos</option>
-            {TIPOS_DOC.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </div>
-
-        <div>
           <p className="text-xs font-bold text-slate-600 uppercase mb-2">Estado SUNAT</p>
           <select
             value={tempFilters.estadoDocumentoSunat?.[0] ?? ""}
@@ -495,18 +437,6 @@ export default function DocumentosVentaPage() {
         </div>
 
         <div>
-          <p className="text-xs font-bold text-slate-600 uppercase mb-2">Condición de Pago</p>
-          <select
-            value={tempFilters.condicionPago ?? ""}
-            onChange={(e) => setTempFilters((p) => ({ ...p, condicionPago: e.target.value || undefined }))}
-            className="w-full border border-slate-200 p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          >
-            <option value="">Todas</option>
-            {CONDICIONES_PAGO.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </div>
-
-        <div>
           <p className="text-xs font-bold text-slate-600 uppercase mb-2">Rango de Fechas</p>
           <div className="flex flex-col gap-2">
             <DateInput
@@ -531,68 +461,6 @@ export default function DocumentosVentaPage() {
         isOpen={showViewModal}
         onClose={() => { setShowViewModal(false); setViewDocumentoId(null); }}
       />
-
-      {/* Modal Boleteo */}
-      {showBoleteoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-                <IconReceipt size={22} className="text-violet-600" />
-              </div>
-              <div>
-                <h2 className="font-bold text-slate-800 text-base">Boletear Documento</h2>
-                <p className="text-xs text-slate-500">
-                  Doc. interno: <span className="font-mono font-semibold">{boleteoDocumentoId}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Serie para las boletas
-              </label>
-              <input
-                type="text"
-                placeholder="Ej: B001"
-                value={serieBoleteo}
-                onChange={(e) => setSerieBoleteo(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono
-                           focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100
-                           uppercase transition-all"
-                maxLength={4}
-                autoFocus
-                onKeyDown={(e) => e.key === "Enter" && handleConfirmarBoleteo()}
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Se generarán boletas automáticamente según el importe máximo configurado.
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowBoleteoModal(false)}
-                disabled={loadingBoleteo}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 text-slate-600
-                           text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmarBoleteo}
-                disabled={loadingBoleteo || !serieBoleteo.trim()}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white
-                           text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loadingBoleteo
-                  ? <><IconRefresh size={16} className="animate-spin" /> Procesando...</>
-                  : <><IconReceipt size={16} /> Boletear</>
-                }
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

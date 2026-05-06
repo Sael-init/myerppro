@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import documentoVentaService from "@/services/DocumentoventaService";
+import documentoVentaService from "@/services/documentoventaService";
 import Modal from "@/components/ui/Modal";
 import {
   IconLoader,
@@ -174,17 +174,34 @@ export default function DocumentoVentaViewModal({
     });
   };
 
-  const formatearMoneda = (monto?: number, moneda: string = "PEN") => {
+  // Mapea monedaId ("001","002",...) o abreviatura ("D","S","E") a código ISO
+  const getIsoCurrency = (monedaId?: string, abreviatura?: string): string => {
+    const id    = (monedaId    ?? "").toUpperCase();
+    const abrev = (abreviatura ?? "").toUpperCase();
+    if (id === "002" || id === "USD" || abrev === "D" || abrev === "USD") return "USD";
+    if (id === "003" || id === "EUR" || abrev === "E" || abrev === "EUR") return "EUR";
+    return "PEN";
+  };
+
+  const formatearMoneda = (monto?: number, monedaId?: string) => {
     if (monto === null || monto === undefined) return "-";
+    const currency = getIsoCurrency(
+      monedaId ?? documento?.monedaId,
+      documento?.moneda?.abreviatura
+    );
     return new Intl.NumberFormat("es-PE", {
       style: "currency",
-      currency: moneda === "USD" ? "USD" : "PEN",
+      currency,
       minimumFractionDigits: 2,
     }).format(monto);
   };
 
-  const monedaSimbolo =
-    documento?.monedaId === "USD" ? "US$" : "S/";
+  const monedaSimbolo = (() => {
+    const currency = getIsoCurrency(documento?.monedaId, documento?.moneda?.abreviatura);
+    if (currency === "USD") return "US$";
+    if (currency === "EUR") return "€";
+    return "S/";
+  })();
 
   // =====================================================
   // RENDER

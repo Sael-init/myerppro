@@ -34,6 +34,7 @@ export interface PedidoVenta {
   ultima_fechaUpdate?: string;
   dias_diferencia?: number;
   fecha_limite_despacho?: string;
+  estado_despacho?: string;         // "DESPACHO ÓPTIMO" | "DESPACHO A REVISAR" | "FUERA DE DESPACHO"
 
   // Objetos anidados (del SP getById)
   tipoentrega?: { descripcion?: string; estado?: string };

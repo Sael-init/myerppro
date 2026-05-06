@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { transportistaService } from "@/services/transportistaService";
 import type { Transportista } from "@/types/transportista.types";
 import { unidadTransporteService } from "@/services/unidadTransporteService";
@@ -13,7 +13,6 @@ import { format, isBefore, parseISO } from "date-fns";
 import {
   IconArrowLeft,
   IconBarcode,
-  IconDeviceFloppy,
   IconFileDescription,
   IconInfoCircle,
   IconLoader,
@@ -25,17 +24,40 @@ import {
 } from "@tabler/icons-react";
 
 import { useCrearStore } from "../store";
+import DateInput from "@/components/forms/DateInput";
+import clienteService from "@/services/clienteService";
 import { guiaRemisionService } from "@/services/guiaRemisionService";
-import documentoVentaService from "@/services/DocumentoventaService";
+import documentoVentaService from "@/services/documentoventaService";
 import type { GuiaRemisionPayload, GuiaRemisionDetalle } from "@/types/guiaRemision.types";
 import type { FormDropdownsDocumentoVenta } from "@/types/Documentoventa.types";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const EMPRESA_ID         = "005";
-const ALMACEN_ID         = "001";
 const TIPO_DOC_GUIA      = "X029";
 const TIPO_MOVIMIENTO_GR = "S";
 const TENANT_ID          = "1";
+const IGV_PORCENTAJE     = 0.18;
+
+function computeTotales(dets: any[]) {
+  let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0;
+  dets.forEach((det: any) => {
+    const subtotal = det.cantidad * det.precio - (det.descuentoProducto || 0);
+    if (det.afectoInafecto) {
+      const base = subtotal / (1 + IGV_PORCENTAJE);
+      valorventaAfecto += base;
+      igvTotal         += subtotal - base;
+    } else {
+      valorventaInafecto += subtotal;
+    }
+  });
+  const total = valorventaAfecto + igvTotal + valorventaInafecto;
+  return {
+    valorventaAfecto:   Math.round(valorventaAfecto   * 100) / 100,
+    valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
+    igv:                Math.round(igvTotal           * 100) / 100,
+    total:              Math.round(total              * 100) / 100,
+  };
+}
 
 // ─── Componentes UI locales ───────────────────────────────────────────────────
 const SectionTitle = ({ title, icon: Icon }: { title: string; icon: any }) => (
@@ -70,7 +92,9 @@ export default function GuiaRemisionPage() {
   const [catalogs, setCatalogs]             = useState<any>({});
   const [dvCatalogs, setDvCatalogs]         = useState<FormDropdownsDocumentoVenta | null>(null);
   const [docTypeOptions, setDocTypeOptions] = useState<any[]>([]);
-  const [filteredSeries, setFilteredSeries] = useState<any[]>([]);
+  const [filteredSeries, setFilteredSeries]   = useState<any[]>([]);
+  const [loadingSeries, setLoadingSeries]     = useState(false);
+  const prevAlmacenRef                        = useRef<string>("");
   const [isManualCorrelativo, setIsManualCorrelativo] = useState(false);
 
   // Transporte
@@ -138,33 +162,61 @@ export default function GuiaRemisionPage() {
       .catch(() => console.warn("No se pudieron cargar catálogos de productos"));
   }, []);
 
-  // ── Catálogos de guía ────────────────────────────────────────────────────────
+  // ── Catálogos base (bootstrap): usa el almacén que ya esté en el store,
+  //    o el primero disponible una vez que cargue AlmacenInicioJson ─────────────
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await guiaRemisionService.getFormDropdowns(EMPRESA_ID, ALMACEN_ID);
+    const bootstrapId = form.almacenId || EMPRESA_ID;   // EMPRESA_ID comparte valor con el almacén por defecto
+    guiaRemisionService
+      .getFormDropdowns(EMPRESA_ID, bootstrapId)
+      .then((res) => {
+        if (!res.isSuccess) return;
+        const data = res.data;
+        setCatalogs(data);
+        const tipoDocJson   = data.tipoDocumentoJson ?? data.tipoDocumentoJSON ?? [];
+        const guiaRemitente = tipoDocJson.find((x: any) => x.key === TIPO_DOC_GUIA);
+        setDocTypeOptions(guiaRemitente ? [guiaRemitente] : tipoDocJson);
+        // Si el store ya tenía almacenId, marcar el ref para evitar doble carga
+        if (form.almacenId) {
+          prevAlmacenRef.current = form.almacenId;
+          setFilteredSeries(
+            (data.serieGuiaJson || []).filter((s: any) => s.groupkey === TIPO_DOC_GUIA)
+          );
+        }
+      })
+      .catch(() => toast.error("Error cargando catálogos de guía"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Cargar todos los catálogos cuando cambia el almacén ──────────────────────
+  useEffect(() => {
+    if (!form.almacenId || form.almacenId === prevAlmacenRef.current) return;
+    prevAlmacenRef.current = form.almacenId;
+    setLoadingSeries(true);
+    guiaRemisionService
+      .getFormDropdowns(EMPRESA_ID, form.almacenId)
+      .then((res) => {
         if (res.isSuccess) {
           const data = res.data;
           setCatalogs(data);
           const tipoDocJson   = data.tipoDocumentoJson ?? data.tipoDocumentoJSON ?? [];
           const guiaRemitente = tipoDocJson.find((x: any) => x.key === TIPO_DOC_GUIA);
           setDocTypeOptions(guiaRemitente ? [guiaRemitente] : tipoDocJson);
-          if (!form.almacenId) update("almacenId", ALMACEN_ID);
+          setFilteredSeries(
+            (data.serieGuiaJson || []).filter((s: any) => s.groupkey === TIPO_DOC_GUIA)
+          );
         }
-      } catch {
-        toast.error("Error cargando catálogos de guía");
-      }
-    };
-    load();
-  }, []);
+      })
+      .catch(() => toast.error("Error cargando catálogos del almacén"))
+      .finally(() => setLoadingSeries(false));
+  }, [form.almacenId]);
 
-  // ── Series filtradas ──────────────────────────────────────────────────────────
+  // ── Auto-seleccionar primera serie al cambiar almacén ─────────────────────────
   useEffect(() => {
-    if (!catalogs.serieGuiaJson) return;
-    const filtradas = catalogs.serieGuiaJson.filter((s: any) => s.groupkey === TIPO_DOC_GUIA);
-    setFilteredSeries(filtradas);
-    if (!form.serie && filtradas.length > 0) update("serie", filtradas[0].key);
-  }, [catalogs.serieGuiaJson, form.serie, update]);
+    if (filteredSeries.length === 0) return;
+    if (!form.serie || !filteredSeries.find((s: any) => s.key === form.serie)) {
+      update("serie", filteredSeries[0].key);
+    }
+  }, [filteredSeries, form.serie, update]);
 
   // ── Correlativo automático ────────────────────────────────────────────────────
   useEffect(() => {
@@ -202,11 +254,6 @@ export default function GuiaRemisionPage() {
     [form.motivoTrasladoId]
   );
 
-  const shouldSendToSunat = useMemo(() => {
-    const s = filteredSeries.find((s: any) => s.key === form.serie);
-    return (s?.aux || "").toUpperCase() === "SI";
-  }, [filteredSeries, form.serie]);
-
   const getAddress = (sourceType: string) => {
     if (sourceType === "ALM_ORIG")
       return catalogs.AlmacenInicioJson?.find((x: any) => x.key === form.almacenId)?.aux || "";
@@ -218,13 +265,29 @@ export default function GuiaRemisionPage() {
   };
 
   useEffect(() => {
-    const partida = form.puntoPartida || getAddress(currentRules.start);
+    const partida = getAddress(currentRules.start);
     const llegada = currentRules.end === "ALM_DEST"
       ? getAddress("ALM_DEST")
-      : form.puntoLlegada || getAddress(currentRules.end);
-    if (!form.puntoPartida && partida)                                      update("puntoPartida", partida);
-    if ((!form.puntoLlegada || currentRules.end === "ALM_DEST") && llegada) update("puntoLlegada", llegada);
+      : getAddress(currentRules.end);
+    if (partida) update("puntoPartida", partida);
+    if (llegada) update("puntoLlegada", llegada);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.almacenId, form.almacenDestinoId, dVentaForm.clienteId, catalogs, currentRules.start, currentRules.end]);
+
+  // Auto-populate puntoLlegada from the address selected in pedido de venta,
+  // falling back to client's main direccion if none was stored in the store.
+  useEffect(() => {
+    if (!dVentaForm.clienteId || currentRules.end !== "CLI") return;
+    if (dVentaForm.clienteDireccion) {
+      update("puntoLlegada", dVentaForm.clienteDireccion);
+      return;
+    }
+    clienteService.getById(dVentaForm.clienteId)
+      .then((cli: any) => {
+        if (cli?.direccion) update("puntoLlegada", cli.direccion);
+      })
+      .catch(() => { /* silent */ });
+  }, [dVentaForm.clienteId, dVentaForm.clienteDireccion, currentRules.end, update]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
   const handleFechaTrasladoChange = (value: string) => {
@@ -237,7 +300,6 @@ export default function GuiaRemisionPage() {
     update("motivoTrasladoId", value);
     if (value !== "13") update("otroMotivoTraslado", "");
     if (value !== "04") update("almacenDestinoId", "");
-    if (value !== "04") update("puntoLlegada", getAddress(getMotivoRules(value).end) || "");
   };
 
   // ── Helpers nombres DV ────────────────────────────────────────────────────────
@@ -323,46 +385,67 @@ export default function GuiaRemisionPage() {
     detalles:               detallesGuia,
   });
 
-  const handleGuardar = async (enviarSunat: boolean) => {
-    if (!form.fechaTraslado)    return toast.error("Ingrese la fecha de traslado");
-    if (!form.motivoTrasladoId) return toast.error("Seleccione el motivo del traslado");
-    if (!form.serie)            return toast.error("Seleccione la serie de la guía");
-    if (!dVentaForm.clienteId)  return toast.error("No hay cliente en el Documento de Venta");
-    if (sinDetalles)            return toast.error("No hay ítems en el Documento de Venta");
-    if (!form.almacenId)        return toast.error("Seleccione el almacén de origen");
+  // ── Envío combinado: DV + GR (siempre con validación SUNAT) ─────────────────
+  const handleGuardarTodo = async () => {
+    // Validar DV
+    if (!dVentaForm.tipodoccomercialId) return toast.error("DV: seleccione el tipo de documento");
+    if (!dVentaForm.clienteId)          return toast.error("DV: seleccione el cliente");
+    if (!dVentaForm.puntoventaId)       return toast.error("DV: seleccione el punto de venta");
+    if (!dVentaForm.monedaId)           return toast.error("DV: seleccione la moneda");
+    if (!dVentaForm.condicionPago)      return toast.error("DV: seleccione la condición de pago");
+    if (sinDetalles)                    return toast.error("Agregue al menos un ítem al documento");
+    if (!dVentaForm.serie)              return toast.error("DV: seleccione la serie");
+
+    // Validar Guía
+    if (!form.fechaTraslado)    return toast.error("Guía: ingrese la fecha de traslado");
+    if (!form.motivoTrasladoId) return toast.error("Guía: seleccione el motivo del traslado");
+    if (!form.serie)            return toast.error("Guía: seleccione la serie");
+    if (!form.almacenId)        return toast.error("Guía: seleccione el almacén de origen");
     if (form.motivoTrasladoId === "04" && !form.almacenDestinoId)
-      return toast.error("Seleccione el almacén destino");
+      return toast.error("Guía: seleccione el almacén destino");
     if (form.motivoTrasladoId === "13" && !form.otroMotivoTraslado)
-      return toast.error('Especifique el motivo cuando selecciona "OTROS"');
+      return toast.error('Guía: especifique el motivo "OTROS"');
 
     setLoading(true);
     try {
-      const payload = buildPayload();
-      const resp = enviarSunat
-        ? await guiaRemisionService.createAndValidate(payload)
-        : await guiaRemisionService.create(payload);
+      const totales = computeTotales(detalles as any[]);
+      const detraccionMonto = dVentaForm.detraccion
+        ? Math.round(totales.total * ((dVentaForm.detraccionPorcentaje || 0) / 100) * 100) / 100
+        : 0;
 
-      if (resp.isSuccess) {
-        const data  = resp.data ?? {};
-        const corr  = data.correlativo ?? "";
-        const sunat = data.respuestaSunat ?? "";
-        if (enviarSunat) {
-          const aceptada =
-            sunat.includes("102") || sunat.includes("103") ||
-            sunat.toLowerCase().includes("aceptada");
-          aceptada
-            ? toast.success(`Guía ${corr} enviada a SUNAT · ${sunat}`)
-            : toast.warning(`Guía ${corr} guardada · SUNAT: ${sunat || "Pendiente de validación"}`);
-        } else {
-          toast.success(`Guía de Remisión ${corr} guardada correctamente`);
-        }
-        resetAll();
-        router.push("/dashboard/ventas");
-      } else {
-        toast.error(resp.message ?? "Error al guardar la Guía de Remisión");
+      const combinedDto = {
+        ...(dVentaForm as any),
+        valorventaAfecto:   totales.valorventaAfecto,
+        valorventaInafecto: totales.valorventaInafecto,
+        igv:                totales.igv,
+        total:              totales.total,
+        saldo:              totales.total,
+        detraccionMonto,
+        detalles:           detalles as any,
+        guiaRemision:       buildPayload(),
+      };
+
+      const res = await documentoVentaService.crearConGuiaRemision(combinedDto);
+
+      const dvGuardado =
+        (Array.isArray(res.documentosVentaIds) && res.documentosVentaIds.length > 0) ||
+        !!res.documentoVentaId ||
+        (res.documentosGenerados ?? 0) > 0;
+
+      if (!dvGuardado && !res.isSuccess) {
+        toast.error(res.message || "Error al guardar el documento de venta");
+        return;
       }
+
+      const cantDV = res.documentosGenerados ?? res.documentosVentaIds?.length ?? 1;
+      res.isSuccess
+        ? toast.success(`${cantDV} DV + Guía creados y enviados a SUNAT`)
+        : toast.warning(`Guardado con advertencias: ${res.message ?? "revisar"}`);
+
+      resetAll();
+      router.push("/dashboard/ventas");
     } catch (e: any) {
-      toast.error(e.message ?? "Error crítico al guardar la Guía de Remisión");
+      toast.error(e.message ?? "Error crítico al guardar");
     } finally {
       setLoading(false);
     }
@@ -390,14 +473,12 @@ export default function GuiaRemisionPage() {
         </div>
 
         <button
-          onClick={() => handleGuardar(shouldSendToSunat)}
+          onClick={handleGuardarTodo}
           disabled={loading}
-          className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
         >
-          {loading ? <IconLoader size={18} className="animate-spin" />
-            : shouldSendToSunat ? <IconSend size={20} />
-            : <IconDeviceFloppy size={20} />}
-          {shouldSendToSunat ? "Enviar SUNAT" : "Guardar"}
+          {loading ? <IconLoader size={18} className="animate-spin" /> : <IconSend size={20} />}
+          Guardar
         </button>
       </div>
 
@@ -463,10 +544,12 @@ export default function GuiaRemisionPage() {
                   <select
                     value={form.serie}
                     onChange={(e) => update("serie", e.target.value)}
-                    disabled={filteredSeries.length === 0}
+                    disabled={filteredSeries.length === 0 || loadingSeries}
                     className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-slate-50"
                   >
-                    {filteredSeries.length === 0 && <option value="">-</option>}
+                    {(filteredSeries.length === 0 || loadingSeries) && (
+                      <option value="">{loadingSeries ? "Cargando..." : "-"}</option>
+                    )}
                     {filteredSeries.map((s: any) => (
                       <option key={s.key} value={s.key}>{s.value}</option>
                     ))}
@@ -504,13 +587,17 @@ export default function GuiaRemisionPage() {
 
               {/* Fechas */}
               <div className="grid grid-cols-2 gap-4">
-                <FormInput label="Fecha Documento" type="date" value={todayStr} disabled />
-                <FormInput
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Fecha Documento</label>
+                  <div className="w-full border border-slate-200 p-2.5 rounded-lg text-xs bg-slate-100 text-slate-500 font-medium">
+                    {todayStr ? todayStr.split("-").reverse().join("/") : ""}
+                  </div>
+                </div>
+                <DateInput
                   label="Fecha Traslado"
-                  type="date"
+                  name="fechaTraslado"
                   value={form.fechaTraslado || todayStr}
-                  onChange={(e: any) => handleFechaTrasladoChange(e.target.value)}
-                  min={todayStr}
+                  onChange={(e) => handleFechaTrasladoChange(e.target.value)}
                 />
               </div>
             </div>
@@ -560,7 +647,11 @@ export default function GuiaRemisionPage() {
                   <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Almacén Origen</label>
                   <select
                     value={form.almacenId}
-                    onChange={(e) => update("almacenId", e.target.value)}
+                    onChange={(e) => {
+                      update("almacenId", e.target.value);
+                      const addr = catalogs.AlmacenInicioJson?.find((x: any) => x.key === e.target.value)?.aux || "";
+                      if (addr) update("puntoPartida", addr);
+                    }}
                     className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                   >
                     <option value="">Seleccione...</option>
