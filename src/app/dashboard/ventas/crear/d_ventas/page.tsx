@@ -639,9 +639,11 @@ function CrearDocumentoVentaContent() {
     listaPreciosService
       .getByEmpresa(EMPRESA_ID, 1, 100)
       .then((res) => {
-        const disponibles = res.data.filter(
-          (lp) => ((lp as any).estado?.descripcion ?? lp.estado_listprec ?? "").toLowerCase() === "registrado"
-        );
+        const disponibles = res.data.filter((lp: any) => {
+          const desc = (lp.estado?.descripcion ?? "").toLowerCase().trim();
+          const code = (lp.estado_listprec ?? "").toLowerCase().trim();
+          return desc !== "anulado" && code !== "anulado";
+        });
         setListasPrecios(disponibles);
         if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === selectedListaId)) {
           setSelectedListaId(disponibles[0].listaprecioId);
@@ -1148,7 +1150,9 @@ function CrearDocumentoVentaContent() {
             precioSinIgv, porcentajeIgv,
             key:                  detraccionInfo.key,
             detraccionPorcentaje: detraccionInfo.detraccionPorcentaje,
-            observacion: det.observacion ?? "",
+            observacion:          det.observacion ?? "",
+            documentoIdEnlazado:      pedido.pedidoventaId,
+            nombreTablaDocEnlazado:   "PEDIDO_VENTA",
           };
         })
         .filter((det: any) => (det.saldoCantidad ?? 0) > 0);
@@ -1734,17 +1738,14 @@ function CrearDocumentoVentaContent() {
                     />
                   </td>
                   <td className="p-1.5 min-w-[130px]">
-                    <select
+                    <SearchableSelect
+                      name="nuevo_presentacionId"
+                      options={presentacionOptsNuevo}
                       value={(nuevoDetalle as any).presentacionId ?? ""}
                       disabled={loadingCat || loadingPres || !(nuevoDetalle as any).bienId}
-                      onChange={(e) => handlePresentacionNuevoChange(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                    >
-                      <option value="">{loadingPres ? "Cargando..." : "-- Presentación --"}</option>
-                      {presentacionOptsNuevo.map((p) => (
-                        <option key={p.key} value={p.key}>{p.value}</option>
-                      ))}
-                    </select>
+                      placeholder={loadingPres ? "Cargando..." : "-- Presentación --"}
+                      onChange={(e: any) => handlePresentacionNuevoChange(e.target.value)}
+                    />
                   </td>
                   <td className="p-2 text-center font-mono text-xs text-slate-400">
                     {(nuevoDetalle as any).bienId && (nuevoDetalle as any).presentacionId

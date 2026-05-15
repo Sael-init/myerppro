@@ -79,17 +79,14 @@ export default function ImportarDVModal({ empresaId, onImportar, onClose }: Prop
   useEffect(() => { fetchDocs(); }, []);
 
   // ── Filtro local ───────────────────────────────────────────────────────────
+  const TIPOS_EXCLUIDOS = new Set(["X037", "X038", "X077", "X078"]);
+
   const docsFiltrados = docs.filter((d) => {
-    const estado      = (d.estado ?? "").toUpperCase();
-    const estadoSunat = ((d as any).estado_documento_sunat ?? (d as any).estadoDocumentoSunat ?? "").toUpperCase();
-    const tipoDoc     = (d.tipodoccomercialId ?? "").toUpperCase();
+    const estado  = (d.estado ?? "").toUpperCase();
+    const tipoDoc = (d.tipodoccomercialId ?? "").toUpperCase();
 
-    // Siempre excluir anulados
-    if (estado === "ANULADO") return false;
-
-    // Documento interno (X066): mostrar todos los que no estén anulados (sin importar estado SUNAT)
-    // Resto de documentos: requieren estado SUNAT = ACEPTADO (ya validados en SUNAT)
-    if (tipoDoc !== "X066" && estadoSunat !== "ACEPTADO") return false;
+    if (TIPOS_EXCLUIDOS.has(tipoDoc)) return false;
+    if (estado === "RECHAZADO") return false;
 
     if (!busqueda.trim()) return true;
     const q    = busqueda.toLowerCase();

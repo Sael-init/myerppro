@@ -6,7 +6,7 @@ import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import documentoVentaService from "@/services/documentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
-import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
+import { generarHtmlNotaCredito } from "@/utils/printDocumentoVenta";
 import { toast } from "sonner";
 
 import DataTable from "@/components/shared/DataTable";
@@ -41,6 +41,7 @@ const INITIAL_FILTERS: FiltrosDocumentoVenta = {
   fechaDesde:           getFechaLocal(-30),
   fechaHasta:           getFechaLocal(0),
   estado:               undefined,
+  motivoelectronicoId:  undefined,
 };
 
 const ESTADOS_SUNAT = [
@@ -99,6 +100,7 @@ export default function NotaCreditoPage() {
   const [tempFilters,     setTempFilters]     = useState<FiltrosDocumentoVenta>(INITIAL_FILTERS);
   const [showFilters,     setShowFilters]     = useState(false);
   const [showViewModal,   setShowViewModal]   = useState(false);
+  const [motivosNcNd,     setMotivosNcNd]     = useState<Array<{ motivoelectronicoId: string; tipodocumento: string; concepto: string }>>([]);
   const [viewDocumentoId, setViewDocumentoId] = useState<string | null>(null);
   const [loadingPrint,    setLoadingPrint]    = useState(false);
 
@@ -107,6 +109,10 @@ export default function NotaCreditoPage() {
   useEffect(() => {
     fetchData(1, debouncedSearch, filters);
   }, [debouncedSearch, filters]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    documentoVentaService.getMotivosNcNd().then(setMotivosNcNd).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Filtros ───────────────────────────────────────────────────────────────
   const handleOpenSidebar = useCallback(() => {
@@ -133,6 +139,7 @@ export default function NotaCreditoPage() {
     if (tempFilters.fechaDesde)                   c++;
     if (tempFilters.fechaHasta)                   c++;
     if (tempFilters.estado)                       c++;
+    if (tempFilters.motivoelectronicoId)          c++;
     return c;
   }, [tempFilters]);
 
@@ -146,6 +153,10 @@ export default function NotaCreditoPage() {
     handleAction(id, "anular", EMPRESA_ID);
   }, [handleAction]);
 
+  const handleDelete = useCallback((id: string) => {
+    handleAction(id, "delete");
+  }, [handleAction]);
+
   const handleValidarSunat = useCallback(async (id: string) => {
     toast.info(`Validar SUNAT ${id} — próximamente`);
   }, []);
@@ -155,9 +166,20 @@ export default function NotaCreditoPage() {
       setLoadingPrint(true);
       const response = await documentoVentaService.getById(id);
       const doc      = (response as any)?.data ?? response;
-      const logoUrl  = `${window.location.origin}/image/logo.png`;
-      const html     = generarHtmlBoleta(doc, logoUrl);
-      const win      = window.open("", "_blank", "width=960,height=720");
+
+      let refSerieNumero: string | null = null;
+      const refId = doc.documentoventa_referenciaId ?? doc.documentoventaReferenciaId;
+      if (refId) {
+        try {
+          const refRes = await documentoVentaService.getById(refId);
+          const refDoc = (refRes as any)?.data ?? refRes;
+          refSerieNumero = `${refDoc.serie}-${refDoc.numero}`;
+        } catch { /* silencioso */ }
+      }
+
+      const logoUrl = `${window.location.origin}/image/logo.png`;
+      const html    = generarHtmlNotaCredito(doc, logoUrl, refSerieNumero);
+      const win     = window.open("", "_blank", "width=960,height=720");
       if (!win) {
         toast.error("El navegador bloqueó la ventana emergente. Habilita pop-ups para este sitio.");
         return;
@@ -317,6 +339,7 @@ export default function NotaCreditoPage() {
           <ActionMenu
             onView={         () => row.documentoventaId && handleView(row.documentoventaId)}
             onAnular={       esRegistrado ? () => row.documentoventaId && handleAnular(row.documentoventaId) : undefined}
+            onDelete={       esAnulado    ? () => row.documentoventaId && handleDelete(row.documentoventaId) : undefined}
             onValidarSunat={ !esAceptado  ? () => row.documentoventaId && handleValidarSunat(row.documentoventaId) : undefined}
             onImprimir={     () => row.documentoventaId && handleImprimir(row.documentoventaId)}
             isAnulado={esAnulado}
@@ -325,7 +348,7 @@ export default function NotaCreditoPage() {
         );
       },
     },
-  ], [handleView, handleAnular, handleValidarSunat, handleImprimir]);
+  ], [handleView, handleAnular, handleDelete, handleValidarSunat, handleImprimir]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -421,6 +444,24 @@ export default function NotaCreditoPage() {
           >
             <option value="">Todos</option>
             {ESTADOS_DOC.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <p className="text-xs font-bold text-slate-600 uppercase mb-2">Motivo Nota Crédito</p>
+          <select
+            value={tempFilters.motivoelectronicoId ?? ""}
+            onChange={(e) => setTempFilters((p) => ({ ...p, motivoelectronicoId: e.target.value || undefined }))}
+            className="w-full border border-slate-200 p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="">Todos</option>
+            {motivosNcNd
+              .filter((m) => m.tipodocumento === "NC")
+              .map((m) => (
+                <option key={m.motivoelectronicoId.trim()} value={m.motivoelectronicoId.trim()}>
+                  {m.motivoelectronicoId.trim()} – {m.concepto}
+                </option>
+              ))}
           </select>
         </div>
 

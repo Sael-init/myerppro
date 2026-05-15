@@ -177,6 +177,7 @@ export interface FiltrosDocumentoVenta {
   formaPagoIds?:        string[];
   cuentaUsuarioIds?:    string[];
   condicionPago?:       string;
+  motivoelectronicoId?: string;
 }
 
 // =====================================================
@@ -360,6 +361,23 @@ export interface CreateDocumentoVentaResponse {
   // ── Error SUNAT (solo enviarSunat = true, rechazo) ────────────────────
   sunatErrors?: string;
   jsonMiFact?: string;
+}
+
+export interface NotaCreditoResponse {
+  documentoVentaId: string;
+  serie: string;
+  numero: string;
+  documentoventaReferenciaId: string;
+  isSuccess: boolean;
+  efectosAplicados: boolean;
+  message: string;
+  estadoDocumento?: string;
+  sunatCode?: string;
+  sunatDescription?: string;
+  sunatNote?: string;
+  codigoHash?: string;
+  cadenaParaCodigoQr?: string;
+  url?: string;
 }
 
 export interface AnularDocumentoResponse {

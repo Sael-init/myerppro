@@ -42,7 +42,13 @@ function buildQrString(doc: any): string {
 // logoUrl: archivo en /public/image/logo.png
 //   → pasar `${window.location.origin}/image/logo.png` desde el componente
 // ─────────────────────────────────────────────────────────────────────────────
-export function generarHtmlBoleta(doc: any, logoUrl: string): string {
+export function generarHtmlNotaCredito(doc: any, logoUrl: string, refSerieNumero: string | null = null): string {
+  return generarHtmlBoleta(doc, logoUrl, { refSerieNumero, ocultarDetraccion: true });
+}
+
+export function generarHtmlBoleta(doc: any, logoUrl: string, opts?: { refSerieNumero?: string | null; ocultarDetraccion?: boolean }): string {
+  const refSerieNumero    = opts?.refSerieNumero    ?? null;
+  const ocultarDetraccion = opts?.ocultarDetraccion ?? false;
   const qrData      = encodeURIComponent(buildQrString(doc));
   const qrImgUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${qrData}`;
   const bannerColor = TIPO_DOC_COLOR[doc.tipodoccomercialId] ?? "#2563eb";
@@ -390,6 +396,11 @@ export function generarHtmlBoleta(doc: any, logoUrl: string): string {
       <span class="lbl">Forma de<br/>Pago:</span>
       <span class="val-bold">${formaPago}</span>
     </div>
+    ${refSerieNumero ? `
+    <div class="c-row c-2" style="margin-top:1px">
+      <span class="lbl">Doc. Referencia:</span>
+      <span class="val-bold" style="font-family:monospace">${refSerieNumero}</span>
+    </div>` : ""}
   </div>
 
   <!-- TABLA DETALLES -->
@@ -445,6 +456,7 @@ export function generarHtmlBoleta(doc: any, logoUrl: string): string {
   </div>
 
   <!-- OBSERVACIONES -->
+  ${!ocultarDetraccion ? `
   <div class="obs-box">
     <div class="obs-title">Observaciones:</div>
     <div class="obs-item">
@@ -457,7 +469,7 @@ export function generarHtmlBoleta(doc: any, logoUrl: string): string {
     <div class="obs-item">
       <strong>Monto detracción</strong> : ${(doc.detraccion_monto ?? 0).toFixed(2)}
     </div>
-  </div>
+  </div>` : ""}
 
 </div>
 

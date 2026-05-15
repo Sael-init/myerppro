@@ -62,12 +62,11 @@ const TENANT_ID   = "1";
 const DEFAULT_TIPO = "X037";
 
 const TIPOS_NC_ND: Record<string, string> = {
-  X037: "Nota de Crédito - Factura",
-  X038: "Nota de Débito - Factura",
-  X077: "Nota de Crédito - Boleta",
-  X078: "Nota de Débito - Boleta",
+  X037: "NOTA DE CREDITO",
+  X038: "NOTA DE DEBITO",
+  X077: "NOTA DE CREDITO ESPECIAL",
+  X078: "NOTA DE DEBITO ESPECIAL",
 };
-const NC_ND_TIPOS_SET = new Set(["X037", "X038", "X077", "X078"]);
 
 // ── Utilidad: número a letras (Perú) ─────────────────────────────────────────
 function numeroALetras(total: number, monedaId: string): string {
@@ -496,19 +495,40 @@ function CrearNotaCreditoContent() {
     listaPreciosService
       .getByEmpresa(EMPRESA_ID, 1, 100)
       .then((res) => {
-        const disponibles = res.data.filter(
-          (lp) => ((lp as any).estado?.descripcion ?? lp.estado_listprec ?? "").toLowerCase() === "registrado"
-        );
+        const disponibles = res.data.filter((lp: any) => {
+          const desc = (lp.estado?.descripcion ?? "").toLowerCase().trim();
+          const code = (lp.estado_listprec ?? "").toLowerCase().trim();
+          return desc !== "anulado" && code !== "anulado";
+        });
         setListasPrecios(disponibles);
-        if (disponibles.length > 0) setSelectedListaId(disponibles[0].listaprecioId);
+        if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === selectedListaId)) {
+          setSelectedListaId(disponibles[0].listaprecioId);
+        }
       })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!selectedListaId) return;
     listaPreciosService.getById(selectedListaId).then((lp: any) => setListaPrecioDetalles(lp.detalles ?? [])).catch(() => {});
   }, [selectedListaId]);
+
+  // Cuando cambia el punto de venta, re-seleccionar la primera lista disponible si la actual ya no aplica
+  useEffect(() => {
+    if (!formData.puntoventaId || listasPrecios.length === 0) return;
+    const filtradas = listasPrecios.filter(
+      (lp) =>
+        !lp.puntoventa ||
+        lp.puntoventa.length === 0 ||
+        lp.puntoventa.some((pv) => pv.puntoventaId === formData.puntoventaId)
+    );
+    if (filtradas.length > 0 && !filtradas.find((lp) => lp.listaprecioId === selectedListaId)) {
+      setSelectedListaId(filtradas[0].listaprecioId);
+      setPrecioLimitesNuevo(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.puntoventaId, listasPrecios]);
 
   // ── Helpers / memos ───────────────────────────────────────────────────────
   const toOpts = (items: KeyValueOption[] = []) =>
@@ -525,16 +545,13 @@ function CrearNotaCreditoContent() {
 
   const seriesFiltradas = useMemo(() => {
     if (!catalogs?.series || !formData.puntoventaId || !formData.tipodoccomercialId) return [];
-    const items = catalogs.series
-      .filter((g) => NC_ND_TIPOS_SET.has(g.tipodoccomercialId) && g.puntoventaId === formData.puntoventaId)
-      .flatMap((g) => g.items);
-    // deduplicar por key
-    const seen = new Set<string | number>();
-    return items.filter((s) => {
-      if (seen.has(s.key)) return false;
-      seen.add(s.key);
-      return true;
-    });
+    return (
+      catalogs.series.find(
+        (g) =>
+          g.tipodoccomercialId === formData.tipodoccomercialId &&
+          g.puntoventaId === formData.puntoventaId
+      )?.items ?? []
+    );
   }, [catalogs, formData.puntoventaId, formData.tipodoccomercialId]);
 
   const siguienteNumero = useMemo(() => {
@@ -544,10 +561,7 @@ function CrearNotaCreditoContent() {
     )?.siguienteNumero ?? "";
   }, [catalogs, formData.puntoventaId, formData.tipodoccomercialId, formData.serie]);
 
-  const motivosFiltrados = useMemo(() => {
-    const tipo = ["X037", "X077"].includes(formData.tipodoccomercialId) ? "NC" : "ND";
-    return motivosNcNd.filter((m) => m.tipodocumento === tipo);
-  }, [motivosNcNd, formData.tipodoccomercialId]);
+  const motivosFiltrados = useMemo(() => motivosNcNd, [motivosNcNd]);
 
   const cargarProducto = useCallback(async (bienId: string): Promise<Producto | null> => {
     if (!bienId) return null;
@@ -596,21 +610,10 @@ function CrearNotaCreditoContent() {
 
   const bienesDisponibles = useMemo(() => {
     if (!catalogs?.bienes) return [];
-    const base = catalogs.bienes.map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
-    if (listaPrecioDetalles.length === 0) return base;
-    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
-    return base.filter((b) => {
-      const pres = catalogs.presentaciones?.find((g) => g.bienId === b.key)?.items ?? [];
-      return (pres as any[]).some((p) => presIds.has(String(p.key)));
-    });
-  }, [catalogs, listaPrecioDetalles]);
+    return catalogs.bienes.map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
+  }, [catalogs]);
 
-  const presentacionOptsNuevo = useMemo(() => {
-    if (presentacionesNuevo.length === 0) return [];
-    if (listaPrecioDetalles.length === 0) return presentacionesNuevo;
-    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
-    return presentacionesNuevo.filter((p) => presIds.has(p.key));
-  }, [presentacionesNuevo, listaPrecioDetalles]);
+  const presentacionOptsNuevo = useMemo(() => presentacionesNuevo, [presentacionesNuevo]);
 
   const handlePresentacionNuevoChange = useCallback((presentacionId: string) => {
     const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
@@ -703,6 +706,8 @@ function CrearNotaCreditoContent() {
       const dto: CreateDocumentoVentaDTO = {
         ...(formData as any),
         tipodoccomercialId:   formData.tipodoccomercialId,
+        serie:                formData.serie,
+        numero:               siguienteNumero || undefined,
         motivoelectronicoId:  formData.motivoelectronicoId || undefined,
         valorventaAfecto:     totales.valorventaAfecto,
         valorventaInafecto:   totales.valorventaInafecto,
@@ -714,19 +719,16 @@ function CrearNotaCreditoContent() {
         detalles:             detalles as any,
       };
 
-      const response = await documentoVentaService.create(dto, true);
-      const res = response as any;
+      const res = await documentoVentaService.crearNotaCredito(dto);
 
-      const insertadoEnBD =
-        (Array.isArray(res.documentosVentaIds) && res.documentosVentaIds.length > 0) ||
-        !!res.documentoVentaId ||
-        (res.documentosGenerados ?? 0) > 0;
+      if (!res.documentoVentaId) {
+        toast.error(res.message || "Error al guardar el documento");
+        return;
+      }
 
-      if (!insertadoEnBD) { toast.error(res.message || "Error al guardar el documento"); return; }
-
-      const cantidad = res.documentosGenerados ?? res.documentosVentaIds?.length ?? 1;
+      const correlativo = res.serie && res.numero ? ` ${res.serie}-${res.numero}` : "";
       res.isSuccess
-        ? toast.success(`${cantidad} nota(s) de crédito creada(s) y enviada(s) a SUNAT`)
+        ? toast.success(`Nota de crédito${correlativo} creada y enviada a SUNAT`)
         : toast.warning(`Guardado con advertencias: ${res.message ?? "revisar en la lista"}`);
 
       router.push("/dashboard/notacredito");
@@ -791,7 +793,15 @@ function CrearNotaCreditoContent() {
         const factor          = getPresentacionFactor(det.bienId, det.presentacionId);
         const conversionTotal = Math.round(cantidad * factor * 1_000_000) / 1_000_000;
         const importe         = Math.round((cantidad * det.precio - (det.descuentoProducto || 0)) * 100) / 100;
-        return { ...det, cantidad, conversionTotal, importe };
+        return {
+          ...det,
+          cantidad,
+          conversionTotal,
+          importe,
+          saldoCantidad:            cantidad,
+          saldoTemporal:            importe,
+          cantidadPendienteBoleteo: cantidad,
+        };
       })
     );
   };
@@ -1134,23 +1144,9 @@ function CrearNotaCreditoContent() {
           </div>
         </div>
 
-        {/* Barra lista precios + stock */}
-        <div className="flex items-center justify-end gap-2 mb-3">
-          {listasPrecios.length > 0 && (
-            <select
-              value={selectedListaId}
-              disabled={loadingCat}
-              onChange={(e) => { setSelectedListaId(e.target.value); setPrecioLimitesNuevo(null); setNuevoDetalle({ ...emptyDetalle }); }}
-              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
-            >
-              {listasPrecios.map((lp) => (
-                <option key={lp.listaprecioId} value={lp.listaprecioId}>
-                  {lp.descripcion || lp.codigo_lista}
-                </option>
-              ))}
-            </select>
-          )}
-          {(nuevoDetalle as any).bienId && (
+        {/* Barra stock */}
+        {(nuevoDetalle as any).bienId && (
+          <div className="flex items-center justify-end gap-2 mb-3">
             <button
               type="button"
               onClick={() => setShowStock(true)}
@@ -1158,8 +1154,8 @@ function CrearNotaCreditoContent() {
             >
               Ver stock disponible
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -1267,17 +1263,14 @@ function CrearNotaCreditoContent() {
                   />
                 </td>
                 <td className="p-1.5 min-w-[130px]">
-                  <select
+                  <SearchableSelect
+                    name="nuevo_presentacionId"
+                    options={presentacionOptsNuevo}
                     value={(nuevoDetalle as any).presentacionId ?? ""}
                     disabled={loadingCat || loadingPres || !(nuevoDetalle as any).bienId}
-                    onChange={(e) => handlePresentacionNuevoChange(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                  >
-                    <option value="">{loadingPres ? "Cargando..." : "-- Presentación --"}</option>
-                    {presentacionOptsNuevo.map((p) => (
-                      <option key={p.key} value={p.key}>{p.value}</option>
-                    ))}
-                  </select>
+                    placeholder={loadingPres ? "Cargando..." : "-- Presentación --"}
+                    onChange={(e: any) => handlePresentacionNuevoChange(e.target.value)}
+                  />
                 </td>
                 <td className="p-2 text-center font-mono text-xs text-slate-400">
                   {(nuevoDetalle as any).bienId && (nuevoDetalle as any).presentacionId

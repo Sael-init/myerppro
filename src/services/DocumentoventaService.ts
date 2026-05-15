@@ -8,6 +8,7 @@ import type {
   CreateDocumentoVentaDTO,
   CreateDocumentoVentaResponse,
   AnularDocumentoResponse,
+  NotaCreditoResponse,
   BienOption,
 } from '@/types/Documentoventa.types';
 
@@ -460,6 +461,46 @@ async actualizarGuiaRemision(
   }
 
   // ── NC/ND ───────────────────────────────────────────────────────────────────
+
+  async crearNotaCredito(documento: CreateDocumentoVentaDTO): Promise<NotaCreditoResponse> {
+    try {
+      const body = {
+        ...documento,
+        cuentausuarioId: documento.cuentausuarioId?.trim() || 'CU0001',
+      };
+      const { data: api } = await apiClient.post(`${this.base}/nota-credito`, body);
+      const payload = api.data ?? api;
+      return {
+        documentoVentaId:           payload.documentoVentaId           ?? '',
+        serie:                      payload.serie                      ?? '',
+        numero:                     payload.numero                     ?? '',
+        documentoventaReferenciaId: payload.documentoventaReferenciaId ?? '',
+        isSuccess:                  payload.isSuccess                  ?? false,
+        efectosAplicados:           payload.efectosAplicados           ?? false,
+        message:                    payload.message                    ?? '',
+        estadoDocumento:            payload.estadoDocumento            ?? undefined,
+        sunatCode:                  payload.sunatCode                  ?? undefined,
+        sunatDescription:           payload.sunatDescription           ?? undefined,
+        sunatNote:                  payload.sunatNote                  ?? undefined,
+        codigoHash:                 payload.codigoHash                 ?? undefined,
+        cadenaParaCodigoQr:         payload.cadenaParaCodigoQr         ?? undefined,
+        url:                        payload.url                        ?? undefined,
+      };
+    } catch (err: any) {
+      const apiMessage =
+        err.response?.data?.message ??
+        err.response?.data?.error   ??
+        err.response?.data?.title   ??
+        (typeof err.response?.data === 'string' ? err.response.data : null);
+
+      console.error('[DocumentoVentaService.crearNotaCredito] Error:', {
+        status: err.response?.status,
+        data:   err.response?.data,
+      });
+
+      throw new Error(apiMessage ?? 'Error al crear la nota de crédito');
+    }
+  }
 
   async getMotivosNcNd(): Promise<Array<{ motivoelectronicoId: string; tipodocumento: string; concepto: string }>> {
     try {

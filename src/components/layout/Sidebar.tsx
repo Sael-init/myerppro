@@ -20,6 +20,7 @@ const Sidebar = () => {
     { title: 'Condiciones de Pago', icon: <IconTruck size={20} />, path: '/dashboard/condicionpago' },
     { title: 'Documentos Venta', icon: <IconTruck size={20} />, path: '/dashboard/ventas' },
     { title: 'Pedidos de Venta', icon: <IconTruck size={20} />, path: '/dashboard/pedidoventa' },
+    { title: 'Cotizaciones', icon: <IconTruck size={20} />, path: '/dashboard/cotizaciones' },
     { title: 'Notas de Crédito', icon: <IconTruck size={20} />, path: '/dashboard/notacredito' },
    ];
 
