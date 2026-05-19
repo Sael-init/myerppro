@@ -57,7 +57,36 @@ class CotizacionService {
   async getById(cotizacionventaId: string): Promise<Cotizacion> {
     try {
       const response = await apiClient.get(`${this.baseURL}/${cotizacionventaId}`);
-      return response.data.data || response.data;
+      const raw = response.data.data || response.data;
+
+      return {
+        ...raw,
+        // snake_case → camelCase (campos planos del API)
+        numeroCorrelativo:  raw.numeroCorrelativo  ?? raw.numero_correlativo,
+        fechaEmision:       raw.fechaEmision       ?? raw.fecha_emision,
+        fechaVencimiento:   raw.fechaVencimiento   ?? raw.fecha_vencimiento,
+        ordcompraNumero:    raw.ordcompraNumero     ?? raw.ordcompra_numero,
+        tipoCambio:         raw.tipoCambio          ?? raw.tipo_cambio,
+        valorventaAfecto:   raw.valorventaAfecto    ?? raw.valorventa_afecto,
+        valorventaInafecto: raw.valorventaInafecto  ?? raw.valorventa_inafecto,
+        tiempoValidez:      raw.tiempoValidez       ?? raw.tiempo_validez,
+        // condicionPago: el API devuelve el string en condicion_pago y el objeto en condicionPago
+        condicionPago: raw.condicion_pago
+          ?? (typeof raw.condicionPago === 'string' ? raw.condicionPago : undefined),
+        condicionpago: typeof raw.condicionPago === 'object' && raw.condicionPago !== null
+          ? raw.condicionPago
+          : raw.condicionpago,
+        // Objetos anidados — el API ya los devuelve en camelCase
+        tipoDocumentoComercial: raw.tipoDocumentoComercial,
+        cliente:      raw.cliente,
+        trabajador:   raw.trabajador,
+        moneda:       raw.moneda,
+        cuentaUsuario: raw.cuentaUsuario,
+        empresa:      raw.empresa,
+        formaPago:    raw.formaPago ?? raw.formapago,
+        tipoentrega:  raw.tipoentrega,
+        detalles:     raw.detalles ?? [],
+      };
     } catch (error: any) {
       console.error('Error al obtener cotización:', error);
       throw new Error(error.response?.data?.message || 'Error al cargar la cotización');

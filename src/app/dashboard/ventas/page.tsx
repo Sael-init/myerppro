@@ -210,6 +210,11 @@ export default function DocumentosVentaPage() {
     }
   }, [boleteoDocumentoId, serieBoleteo, fetchData, meta.currentPage, debouncedSearch, filters]);
 
+  const displayData = useMemo(
+    () => data.filter((d) => d.tipodoccomercialId !== "X037"),
+    [data]
+  );
+
   // ── Columnas — memoizadas para evitar re-render de DataTable ─────────────
   // ✅ useMemo con dependencias estables (callbacks memoizados arriba)
   const columns = useMemo(() => [
@@ -432,7 +437,7 @@ export default function DocumentosVentaPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={data}
+        data={displayData}
         loading={loading}
         meta={meta}
         onPageChange={(page: number) => fetchData(page, debouncedSearch, filters)}

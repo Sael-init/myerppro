@@ -28,11 +28,14 @@ export interface Cotizacion {
   tiempoValidez?: number;
   detalles?: CotizacionDetalle[];
 
-  // Objetos anidados (joins del SP)
-  cliente?: { descripcion?: string; num_docident?: string };
+  // Objetos anidados del API
+  tipoDocumentoComercial?: { descripcion?: string; abreviatura?: string };
+  cliente?: { descripcion?: string; numDocIdent?: string; num_docident?: string; direccion?: string };
   trabajador?: { nombres?: string; apellidos?: string };
   moneda?: { descripcion?: string; abreviatura?: string };
-  formapago?: { descripcion?: string };
+  cuentaUsuario?: { usuario?: string; perfilesId?: string };
+  empresa?: { razonSocial?: string; ruc?: string };
+  formaPago?: { descripcion?: string; condicionPago?: string };
   condicionpago?: { descripcion?: string; dias?: number };
   tipoentrega?: { descripcion?: string };
 }
@@ -53,9 +56,8 @@ export interface CotizacionDetalle {
   precioSinIgv?: number;
   porcentajeIgv?: number;
 
-  // Objetos anidados
-  bien?: { descripcion?: string; cod_admin?: string };
-  presentacion?: { descripcion?: string };
+  bien?: { descripcion?: string; codAdmin?: number | string; cod_admin?: string; estado?: boolean };
+  presentacion?: { descripcion?: string; cantidad?: number; estado?: boolean };
 }
 
 export interface FiltrosCotizacion {
