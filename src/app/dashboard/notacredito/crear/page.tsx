@@ -561,7 +561,31 @@ function CrearNotaCreditoContent() {
     )?.siguienteNumero ?? "";
   }, [catalogs, formData.puntoventaId, formData.tipodoccomercialId, formData.serie]);
 
-  const motivosFiltrados = useMemo(() => motivosNcNd, [motivosNcNd]);
+  // Mapeo tipodoccomercialId → abreviatura que usa la tabla de motivos
+  const abreviaturaTipoDoc = useMemo(() => {
+    if (!formData.tipodoccomercialId) return "";
+    // Primero intenta obtenerla desde los catálogos cargados
+    const fromCatalog = (catalogs?.tipos_documento_comercial ?? []).find(
+      (t) => String(t.key) === formData.tipodoccomercialId
+    );
+    if (fromCatalog) {
+      const abrev = (fromCatalog as any).abreviatura ?? (fromCatalog as any).abrev ?? "";
+      if (abrev) return abrev.trim().toUpperCase();
+    }
+    // Fallback estático basado en los IDs conocidos
+    const NC_IDS = new Set(["X037", "X077"]);
+    const ND_IDS = new Set(["X038", "X078"]);
+    if (NC_IDS.has(formData.tipodoccomercialId)) return "NC";
+    if (ND_IDS.has(formData.tipodoccomercialId)) return "ND";
+    return formData.tipodoccomercialId;
+  }, [catalogs, formData.tipodoccomercialId]);
+
+  const motivosFiltrados = useMemo(() => {
+    if (!abreviaturaTipoDoc || motivosNcNd.length === 0) return [];
+    return motivosNcNd.filter(
+      (m) => m.tipodocumento?.trim().toUpperCase() === abreviaturaTipoDoc
+    );
+  }, [motivosNcNd, abreviaturaTipoDoc]);
 
   const cargarProducto = useCallback(async (bienId: string): Promise<Producto | null> => {
     if (!bienId) return null;
@@ -620,16 +644,8 @@ function CrearNotaCreditoContent() {
     let precio = 0;
     let limites: PrecioLimites | null = null;
     if (det) {
-      if (formData.monedaId === "002") {
-        precio  = det.precio_nuevo_dol ?? 0;
-        limites = { min: det.precio_nuevo_minimo_dol ?? 0, max: det.precio_nuevo_dol ?? 0 };
-      } else if (formData.monedaId === "003") {
-        precio  = det.precio_nuevo_eur ?? 0;
-        limites = { min: det.precio_nuevo_minimo_eur ?? 0, max: det.precio_nuevo_eur ?? 0 };
-      } else {
-        precio  = det.precio_nuevo ?? 0;
-        limites = { min: det.precio_nuevo_minimo ?? 0, max: det.precio_nuevo ?? 0 };
-      }
+      precio  = det.precio_minimo_minorista ?? 0;
+      limites = { min: det.precio_minimo_minorista ?? 0, max: det.precio_minimo_minorista ?? 0 };
     }
     setPrecioLimitesNuevo(limites);
     setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));
@@ -923,7 +939,15 @@ function CrearNotaCreditoContent() {
                 disabled={motivosFiltrados.length === 0}
                 className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
               >
-                <option value="">{motivosNcNd.length === 0 ? "Cargando motivos..." : "Seleccione motivo..."}</option>
+                <option value="">
+                  {motivosNcNd.length === 0
+                    ? "Cargando motivos..."
+                    : !formData.tipodoccomercialId
+                    ? "Seleccione tipo de documento primero"
+                    : motivosFiltrados.length === 0
+                    ? "Sin motivos para este tipo de documento"
+                    : "Seleccione motivo..."}
+                </option>
                 {motivosFiltrados.map((m) => {
                   const id = m.motivoelectronicoId.trim();
                   return (

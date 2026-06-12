@@ -11,14 +11,16 @@ interface DateInputProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Separador de visualización: '/' (default) o '-' */
+  separator?: '/' | '-';
 }
 
-/** Convierte yyyy-mm-dd → dd/mm/yyyy para mostrar */
-function toDisplay(iso: string): string {
+/** Convierte yyyy-mm-dd → dd{sep}mm{sep}yyyy para mostrar */
+function toDisplay(iso: string, sep: string): string {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");
   if (!y || !m || !d) return "";
-  return `${d}/${m}/${y}`;
+  return `${d}${sep}${m}${sep}${y}`;
 }
 
 /**
@@ -33,6 +35,7 @@ export default function DateInput({
   required,
   disabled,
   className,
+  separator = '/',
 }: DateInputProps) {
   const hiddenRef = useRef<HTMLInputElement>(null);
 
@@ -71,8 +74,8 @@ export default function DateInput({
         <input
           type="text"
           inputMode="numeric"
-          placeholder="dd/mm/yyyy"
-          value={toDisplay(value)}
+          placeholder={`dd${separator}mm${separator}yyyy`}
+          value={toDisplay(value, separator)}
           onChange={(e) => handleTextChange(e.target.value)}
           disabled={disabled}
           required={required}

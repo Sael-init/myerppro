@@ -24,8 +24,10 @@ import {
   IconAlertTriangle,
   IconClock,
   IconMoodSmile,
+  IconPrinter,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { generarHtmlCotizacion } from "@/utils/printCotizacion";
 
 const EMPRESA_ID        = "005";
 const CUENTA_USUARIO_ID = "CU0001";
@@ -64,9 +66,10 @@ const EstadoBadge = ({ estado }: { estado?: string }) => {
 type ValidezStatus = "vigente" | "por_vencer" | "vencida" | "sin_fecha";
 
 function getValidezStatus(cot: Cotizacion): ValidezStatus {
-  if (!cot.fechaVencimiento) return "sin_fecha";
+  const fv = cot.fechaVencimiento ?? cot.fecha_vencimiento;
+  if (!fv) return "sin_fecha";
   const hoy  = new Date(); hoy.setHours(0, 0, 0, 0);
-  const venc = new Date(cot.fechaVencimiento); venc.setHours(0, 0, 0, 0);
+  const venc = new Date(fv); venc.setHours(0, 0, 0, 0);
   const diff = Math.ceil((venc.getTime() - hoy.getTime()) / 86_400_000);
   if (diff < 0) return "vencida";
   if (diff <= 3) return "por_vencer";
@@ -90,16 +93,16 @@ const CorrelatvoValidez = ({ row }: { row: Cotizacion }) => {
     <div className="flex flex-col gap-1">
       <span
         title={cfg.tooltip || undefined}
-        className={`inline-flex self-start items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold border cursor-default ${cfg.bg} ${cfg.text} ${cfg.border}`}
+        className={`inline-flex self-start items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold cursor-default ${cfg.bg} ${cfg.text}`}
       >
-        {row.numeroCorrelativo || row.cotizacionventaId}
+        {row.numeroCorrelativo ?? row.numero_correlativo ?? row.cotizacionventaId}
       </span>
       <span className="text-[10px] text-slate-400">
-        {row.fechaEmision ? new Date(row.fechaEmision).toLocaleDateString("es-PE") : "—"}
+        {(row.fechaEmision ?? row.fecha_emision) ? new Date((row.fechaEmision ?? row.fecha_emision)!).toLocaleDateString("es-PE") : "—"}
       </span>
-      {row.fechaVencimiento && !esAnulado && (
+      {(row.fechaVencimiento ?? row.fecha_vencimiento) && !esAnulado && (
         <span className="text-[9px] text-slate-400">
-          vence: {new Date(row.fechaVencimiento).toLocaleDateString("es-PE")}
+          vence: {new Date((row.fechaVencimiento ?? row.fecha_vencimiento)!).toLocaleDateString("es-PE")}
         </span>
       )}
     </div>
@@ -154,14 +157,15 @@ const confirmConfig: Record<ConfirmType, { title: string; msg: string; btnLabel:
 
 // ── ActionMenu ───────────────────────────────────────────────────────────────
 interface CotizacionMenuProps {
-  row:       Cotizacion;
-  onView:    () => void;
-  onEdit?:   () => void;
-  onAnular?: () => void;
-  onDelete?: () => void;
+  row:         Cotizacion;
+  onView:      () => void;
+  onEdit?:     () => void;
+  onAnular?:   () => void;
+  onDelete?:   () => void;
+  onImprimir?: () => void;
 }
 
-const CotizacionAccionesMenu = ({ row, onView, onEdit, onAnular, onDelete }: CotizacionMenuProps) => {
+const CotizacionAccionesMenu = ({ row, onView, onEdit, onAnular, onDelete, onImprimir }: CotizacionMenuProps) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative inline-block">
@@ -201,6 +205,19 @@ const CotizacionAccionesMenu = ({ row, onView, onEdit, onAnular, onDelete }: Cot
               </svg>
               Editar
             </button>
+          )}
+
+          {onImprimir && (
+            <>
+              <div className="border-t border-slate-100" />
+              <button
+                onClick={() => { setOpen(false); onImprimir(); }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-sky-700 hover:bg-sky-50 transition-colors"
+              >
+                <IconPrinter size={14} />
+                Imprimir / Descargar
+              </button>
+            </>
           )}
 
           {(onAnular || onDelete) && <div className="border-t border-slate-100" />}
@@ -326,66 +343,121 @@ export default function CotizacionesPage() {
     router.push(`/dashboard/cotizaciones/crear?edit=${row.cotizacionventaId}`);
   };
 
+  const handleImprimir = async (row: Cotizacion) => {
+    if (!row.cotizacionventaId) return;
+    try {
+      const cot    = await cotizacionService.getById(row.cotizacionventaId);
+      const logoUrl = `${window.location.origin}/image/logo.png`;
+      const html   = generarHtmlCotizacion(cot, logoUrl);
+      const win    = window.open("", "_blank", "width=960,height=720");
+      if (!win) {
+        toast.error("El navegador bloqueó la ventana emergente. Habilita pop-ups para este sitio.");
+        return;
+      }
+      win.document.write(html);
+      win.document.close();
+    } catch (err: any) {
+      toast.error(`Error al generar la impresión: ${err.message}`);
+    }
+  };
+
   const columns = [
     {
-      header: "Correlativo",
-      width: "160px",
-      render: (row: Cotizacion) => <CorrelatvoValidez row={row} />,
-    },
-    {
-      header: "Cliente / Vendedor",
-      className: "min-w-[260px]",
+      header: "Doc",
+      width: "60px",
       render: (row: Cotizacion) => (
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-            <IconFileDescription size={18} />
-          </div>
-          <div>
-            <p className="font-semibold text-slate-800 text-sm uppercase">
-              {row.cliente?.descripcion || row.clienteId || "—"}
-            </p>
-            {row.trabajador && (
-              <p className="text-[10px] text-slate-500 uppercase">
-                👤 {`${row.trabajador.apellidos || ""} ${row.trabajador.nombres || ""}`.trim()}
-              </p>
-            )}
-          </div>
-        </div>
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase font-mono">
+          {row.tipoDocumentoComercial?.abreviatura || row.tipodoccomercialId || "—"}
+        </span>
       ),
     },
     {
-      header: "Vencimiento",
-      width: "140px",
-      render: (row: Cotizacion) => (
-        <div className="flex flex-col text-xs text-slate-600">
-          <span>
-            {row.fechaVencimiento
-              ? new Date(row.fechaVencimiento).toLocaleDateString("es-PE")
-              : "—"}
+      header: "Fecha Emisión",
+      width: "110px",
+      render: (row: Cotizacion) => {
+        const fecha = row.fechaEmision ?? row.fecha_emision;
+        return (
+          <span className="text-xs text-slate-700">
+            {fecha ? new Date(fecha).toLocaleDateString("es-PE") : "—"}
           </span>
-          {row.tiempoValidez != null && (
-            <span className="text-[10px] text-slate-400">{row.tiempoValidez} día(s)</span>
+        );
+      },
+    },
+    {
+      header: "Correlativo",
+      width: "130px",
+      render: (row: Cotizacion) => <CorrelatvoValidez row={row} />,
+    },
+    {
+      header: "Cliente",
+      className: "min-w-[220px]",
+      render: (row: Cotizacion) => (
+        <div>
+          <p className="font-semibold text-slate-800 text-sm uppercase">
+            {row.cliente?.descripcion || row.clienteId || "—"}
+          </p>
+          {(row.cliente?.numDocIdent || row.cliente?.num_docident) && (
+            <p className="text-[10px] text-slate-400 font-mono">
+              {row.cliente.numDocIdent ?? row.cliente.num_docident}
+            </p>
           )}
         </div>
       ),
     },
     {
-      header: "Total",
-      className: "text-right",
+      header: "Moneda",
+      width: "80px",
+      className: "text-center",
+      render: (row: Cotizacion) => (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+          {row.moneda?.descripcion || row.monedaId || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Cond. Pago",
+      width: "100px",
+      render: (row: Cotizacion) => (
+        <span className="text-xs text-slate-700">
+          {row.condicionPago ?? row.condicion_pago ?? "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Forma Pago",
+      width: "150px",
+      render: (row: Cotizacion) => (
+        <span className="text-xs text-slate-700">
+          {row.formaPago?.descripcion || row.formaspagoId || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Observación",
       width: "120px",
       render: (row: Cotizacion) => (
+        <span className="text-xs text-slate-500 italic">
+          {row.observacion?.trim() || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Total",
+      width: "110px",
+      className: "text-right",
+      render: (row: Cotizacion) => (
         <div className="text-right">
-          <span className="text-xs text-slate-400 font-semibold mr-1 uppercase">
+          <span className="text-[10px] text-slate-400 mr-1 uppercase">
             {row.moneda?.abreviatura || row.monedaId || ""}
           </span>
-          <span className="font-bold text-slate-800">{fmt(row.total)}</span>
+          <span className="font-bold text-slate-800 text-sm">{fmt(row.total)}</span>
         </div>
       ),
     },
     {
       header: "Estado",
       className: "text-center",
-      width: "130px",
+      width: "120px",
       render: (row: Cotizacion) => (
         <div className="flex justify-center">
           <EstadoBadge estado={row.estado} />
@@ -409,6 +481,7 @@ export default function CotizacionesPage() {
               onEdit={esRegistrado   ? () => handleEdit(row)              : undefined}
               onAnular={esRegistrado ? () => openConfirm("anular", row)  : undefined}
               onDelete={esAnulado    ? () => openConfirm("delete", row)  : undefined}
+              onImprimir={() => handleImprimir(row)}
             />
           </div>
         );

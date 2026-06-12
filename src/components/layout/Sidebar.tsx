@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  IconPackage, 
-  IconUsers, 
-  IconTruck 
+import {
+  IconPackage,
+  IconUsers,
+  IconTruck,
+  IconChartBar,
 } from "@tabler/icons-react";
 
 const Sidebar = () => {
@@ -21,7 +22,9 @@ const Sidebar = () => {
     { title: 'Documentos Venta', icon: <IconTruck size={20} />, path: '/dashboard/ventas' },
     { title: 'Pedidos de Venta', icon: <IconTruck size={20} />, path: '/dashboard/pedidoventa' },
     { title: 'Cotizaciones', icon: <IconTruck size={20} />, path: '/dashboard/cotizaciones' },
+    { title: 'Lista de Precios', icon: <IconTruck size={20} />, path: '/dashboard/lista_precios' },
     { title: 'Notas de Crédito', icon: <IconTruck size={20} />, path: '/dashboard/notacredito' },
+    { title: 'Reportes Ventas', icon: <IconChartBar size={20} />, path: '/dashboard/reportesventas' },
    ];
 
   return (

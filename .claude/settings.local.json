@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npx tsc *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\\\\src\\\\app\\\\dashboard\\\\pedidoventa\" -Recurse -Include \"*.tsx\", \"*.ts\")",
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "Bash(npm install *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\\\\src\\\\app\\\\dashboard\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Select-String \"lista_precios\")"
     ]
   }
 }

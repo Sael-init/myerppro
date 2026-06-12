@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import pedidoventaService from "@/services/pedidoventaService";
 import Modal from "@/components/ui/Modal";
+import { imprimirPedidoVenta } from "@/utils/printPedidoVenta";
 import {
   IconLoader,
   IconX,
@@ -10,15 +11,11 @@ import {
   IconPackage,
   IconHistory,
   IconChecklist,
+  IconPrinter,
+  IconFileDescription,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
-import type {
-  PedidoVenta,
-  PedidoVentaDetalle,
-  PedidoVentaDetalleFull,
-  PedidoVentaAccion,
-  HistorialSuceso,
-} from "@/types/pedidoventa.type";
+import type { PedidoVentaDetalleFull } from "@/types/pedidoventa.type";
 
 interface Props {
   pedidoventaId: string | null;
@@ -94,9 +91,21 @@ const fmt = (n?: number | null) =>
     : "—";
 
 export default function PedidoVentaViewModal({ pedidoventaId, isOpen, onClose }: Props) {
-  const [full, setFull] = useState<PedidoVentaDetalleFull | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"detalle" | "acciones" | "historial">("detalle");
+  const [full,       setFull]       = useState<PedidoVentaDetalleFull | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [printing,   setPrinting]   = useState(false);
+  const [activeTab,  setActiveTab]  = useState<"detalle" | "acciones" | "historial">("detalle");
+
+  const handlePrint = async () => {
+    if (!full || printing) return;
+    setPrinting(true);
+    try {
+      const logoUrl = `${window.location.origin}/image/logo.png`;
+      imprimirPedidoVenta(full, logoUrl);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && pedidoventaId) {
@@ -443,10 +452,31 @@ export default function PedidoVentaViewModal({ pedidoventaId, isOpen, onClose }:
                   <dd className="text-slate-700">{pv.listaprecio.descripcion}</dd>
                 </div>
               )}
+              {(pv.cotizacionventaId || full?.cotizacion?.numero_correlativo) && (
+                <div className="md:col-span-2">
+                  <dt className="text-slate-500 font-semibold flex items-center gap-1 mb-1">
+                    <IconFileDescription size={12} className="text-blue-500" />
+                    Cotización de Origen
+                  </dt>
+                  <dd className="text-blue-700 font-mono font-bold bg-blue-50 border border-blue-200 px-2 py-1 rounded inline-block">
+                    {full?.cotizacion?.numero_correlativo ?? pv.cotizacionventaId}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
 
-          <div className="flex justify-end pt-4 border-t">
+          <div className="flex justify-between items-center pt-4 border-t">
+            <button
+              onClick={handlePrint}
+              disabled={printing}
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {printing
+                ? <><IconLoader size={16} className="animate-spin" /> Generando...</>
+                : <><IconPrinter size={16} /> Imprimir / Descargar</>
+              }
+            </button>
             <button
               onClick={onClose}
               className="px-6 py-2.5 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-lg flex items-center gap-2 transition-all active:scale-95"

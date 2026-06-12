@@ -150,16 +150,8 @@ export default function SelectorProductoLista({
       let precio = 0;
       let limites: PrecioLimites | null = null;
       if (det) {
-        if (monedaId === "002") {
-          precio  = det.precio_nuevo_dol ?? 0;
-          limites = { min: det.precio_nuevo_minimo_dol ?? 0, max: det.precio_nuevo_dol ?? 0 };
-        } else if (monedaId === "003") {
-          precio  = det.precio_nuevo_eur ?? 0;
-          limites = { min: det.precio_nuevo_minimo_eur ?? 0, max: det.precio_nuevo_eur ?? 0 };
-        } else {
-          precio  = det.precio_nuevo ?? 0;
-          limites = { min: det.precio_nuevo_minimo ?? 0, max: det.precio_nuevo ?? 0 };
-        }
+        precio  = det.precio_minimo_minorista ?? 0;
+        limites = { min: det.precio_minimo_minorista ?? 0, max: det.precio_minimo_minorista ?? 0 };
       }
       onPresentacionChange(presId, precio, limites);
     },

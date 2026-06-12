@@ -25,6 +25,15 @@ import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types"
 import StockDisponible from "@/components/shared/StockDisponible";
 
 interface PrecioLimites { min: number; max: number; }
+interface PrecioTierInfo { precio: number; min: number; tier: "minorista" | "mayorista" | "distribuidor" | null; }
+
+const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierInfo => {
+  if (det.cantidad_distribuidor != null && cantidad >= det.cantidad_distribuidor && det.precio_minimo_distribuidor != null)
+    return { precio: det.precio_minimo_distribuidor, min: det.precio_minimo_distribuidor, tier: "distribuidor" };
+  if (det.cantidad_mayorista != null && cantidad >= det.cantidad_mayorista && det.precio_minimo_mayorista != null)
+    return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista, tier: "mayorista" };
+  return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
+};
 
 import type { PedidoVenta, PedidoVentaDetalle } from "@/types/pedidoventa.type";
 import type { CondicionPago }                   from "@/types/condicionpago.types";
@@ -40,6 +49,8 @@ import type {
 import SearchableSelect  from "@/components/forms/SearchableSelect";
 import DateInput         from "@/components/forms/DateInput";
 import DropDownClient    from "@/components/shared/DropDownClient";
+import ImportarCotizacionPanel from "@/app/dashboard/pedidoventa/components/ImportarCotizacionPanel";
+import type { Cotizacion } from "@/types/cotizacion.types";
 
 import {
   IconArrowLeft,
@@ -57,6 +68,7 @@ import {
   IconX,
   IconMapPin,
   IconEdit,
+  IconFileDescription,
 } from "@tabler/icons-react";
 
 const EMPRESA_ID        = "005";
@@ -411,6 +423,8 @@ const FormInput = ({ label, fullWidth, className, ...props }: FormInputProps) =>
 const toOpts = (items: KeyValueOption[] = []) =>
   items.map((x) => ({ key: x.key?.toString() ?? "", value: x.value || `COD: ${x.key}` }));
 
+type DetalleConOrigen = PedidoVentaDetalle & { _desdeCotizacion?: boolean; _cantidadOrigen?: number };
+
 const emptyNuevoDetalle = (): PedidoVentaDetalle => ({
   bienId:             "",
   presentacionId:     "",
@@ -474,9 +488,12 @@ export default function CrearPedidoVentaPage() {
     tipoopegratuitaId:    "00",
   });
 
-  const [detalles,     setDetalles]     = useState<PedidoVentaDetalle[]>([]);
-  const [nuevoDetalle, setNuevoDetalle]   = useState<PedidoVentaDetalle>(emptyNuevoDetalle());
-  const [precioLimites, setPrecioLimites] = useState<PrecioLimites | null>(null);
+  const [detalles,       setDetalles]       = useState<DetalleConOrigen[]>([]);
+  const [nuevoDetalle,   setNuevoDetalle]   = useState<PedidoVentaDetalle>(emptyNuevoDetalle());
+  const [precioLimites,  setPrecioLimites]  = useState<PrecioLimites | null>(null);
+  const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
+  const [showImportCot,  setShowImportCot]  = useState(false);
+  const [cotizacionventaId, setCotizacionventaId] = useState<string | undefined>(undefined);
 
   // ── Carga inicial de catálogos ─────────────────────────────────────────────
   useEffect(() => {
@@ -663,24 +680,37 @@ export default function CrearPedidoVentaPage() {
   const handlePresentacionNuevoChange = useCallback(
     (presentacionId: string) => {
       const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
-      let precio = 0;
-      let limites: PrecioLimites | null = null;
       if (det) {
-        if (form.monedaId === "002") {
-          precio  = det.precio_nuevo_dol ?? 0;
-          limites = { min: det.precio_nuevo_minimo_dol ?? 0, max: det.precio_nuevo_dol ?? 0 };
-        } else if (form.monedaId === "003") {
-          precio  = det.precio_nuevo_eur ?? 0;
-          limites = { min: det.precio_nuevo_minimo_eur ?? 0, max: det.precio_nuevo_eur ?? 0 };
-        } else {
-          precio  = det.precio_nuevo ?? 0;
-          limites = { min: det.precio_nuevo_minimo ?? 0, max: det.precio_nuevo ?? 0 };
-        }
+        const tier = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+        setPrecioLimites({ min: tier.min, max: tier.min });
+        setPrecioTierLabel(tier.tier);
+        setNuevoDetalle((prev) => ({ ...prev, presentacionId, ...(tier.precio > 0 ? { precio: tier.precio } : {}) }));
+      } else {
+        setPrecioLimites(null);
+        setPrecioTierLabel(null);
+        setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
       }
-      setPrecioLimites(limites);
-      setNuevoDetalle((prev) => ({ ...prev, presentacionId, ...(precio > 0 ? { precio } : {}) }));
     },
-    [listaPrecioDetalles, form.monedaId]
+    [listaPrecioDetalles, nuevoDetalle.cantidad]
+  );
+
+  const handleCantidadNuevoChange = useCallback(
+    (cantidad: number) => {
+      if (!nuevoDetalle.presentacionId) {
+        setNuevoDetalle((prev) => ({ ...prev, cantidad }));
+        return;
+      }
+      const det = listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId);
+      if (det) {
+        const tier = calcPrecioTier(det, cantidad);
+        setPrecioLimites({ min: tier.min, max: tier.min });
+        setPrecioTierLabel(tier.tier);
+        setNuevoDetalle((prev) => ({ ...prev, cantidad, precio: tier.precio }));
+      } else {
+        setNuevoDetalle((prev) => ({ ...prev, cantidad }));
+      }
+    },
+    [listaPrecioDetalles, nuevoDetalle.presentacionId]
   );
 
   // ── Handlers generales ─────────────────────────────────────────────────────
@@ -818,12 +848,57 @@ export default function CrearPedidoVentaPage() {
     setDetalles((prev) => [...prev, { ...nuevoDetalle, item: prev.length + 1 } as any]);
     setNuevoDetalle(emptyNuevoDetalle());
     setPrecioLimites(null);
+    setPrecioTierLabel(null);
   };
 
   const handleEliminarDetalle = (i: number) => {
     setDetalles((prev) =>
       prev.filter((_, idx) => idx !== i).map((d, idx) => ({ ...d, item: idx + 1 }))
     );
+  };
+
+  const handleImportarCotizacion = (cot: Cotizacion) => {
+    setCotizacionventaId(cot.cotizacionventaId);
+
+    const esPendiente = (cot.estado ?? "").toUpperCase() === "PENDIENTE";
+
+    // ── Rellenar cabecera del formulario ──
+    setForm((prev) => ({
+      ...prev,
+      clienteId:      cot.clienteId      ?? prev.clienteId,
+      monedaId:       cot.monedaId       ?? prev.monedaId,
+      tipo_cambio:    String(cot.tipoCambio ?? cot.tipo_cambio ?? prev.tipo_cambio),
+      formaspagoId:   cot.formaspagoId   ?? prev.formaspagoId,
+      condicion_pago: cot.condicionPago  ?? cot.condicion_pago ?? prev.condicion_pago,
+      trabajadorId:   cot.trabajadorId   ?? prev.trabajadorId,
+      observacion:    cot.observacion    ?? prev.observacion,
+    }));
+
+    // ── Rellenar ítems del detalle ──
+    const nuevos: DetalleConOrigen[] = (cot.detalles ?? [])
+      .map((det) => {
+        const cantTotal  = Number(det.cantidad ?? 1);
+        // saldo_cantidad = lo que aún se puede facturar de esta cotización
+        const saldo      = Number(det.saldoCantidad ?? (det as any).saldo_cantidad ?? 0);
+        const cantDisponible = esPendiente ? saldo : cantTotal;
+        return {
+          bienId:             det.bienId             ?? "",
+          presentacionId:     det.presentacionId     ?? "",
+          cantidad:           cantDisponible,
+          precio:             Number(det.precio      ?? 0),
+          descuento_producto: Number(det.descuentoProducto ?? 0),
+          afecto_inafecto:    det.afectoInafecto      ?? true,
+          observacion:        det.observacion         ?? "",
+          _desdeCotizacion:   true,
+          _cantidadOrigen:    cantDisponible,
+        };
+      })
+      // Excluir items sin saldo disponible (saldo_cantidad = 0)
+      .filter((d) => !esPendiente || d.cantidad > 0)
+      // Reasignar numeración correlativa tras el filtro
+      .map((d, idx) => ({ ...d, item: idx + 1 }));
+    setDetalles(nuevos);
+    toast.success(`Cotización importada: ${nuevos.length} ítem${nuevos.length !== 1 ? "s" : ""}`);
   };
 
   // ── Validación ─────────────────────────────────────────────────────────────
@@ -863,6 +938,7 @@ export default function CrearPedidoVentaPage() {
         observacion:          form.observacion.trim()           || undefined,
         lugar_despacho:       form.lugar_despacho.trim()        || undefined,
         listaprecioId:        selectedListaId,
+        cotizacionventaId:    cotizacionventaId,
         operaciongratuita:    esGratuita,
         tipoopegratuitaId:    form.tipoopegratuitaId.trim()     || undefined,
         valorventa_afecto,
@@ -933,6 +1009,15 @@ export default function CrearPedidoVentaPage() {
             className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors"
           >
             Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImportCot(true)}
+            disabled={saving || isBusy}
+            className="px-4 py-2.5 rounded-lg border border-blue-300 text-blue-700 font-bold hover:bg-blue-50 disabled:opacity-50 transition-colors flex items-center gap-2"
+          >
+            <IconFileDescription size={17} />
+            Importar Cotización
           </button>
           <button
             onClick={handleSubmit}
@@ -1242,6 +1327,7 @@ export default function CrearPedidoVentaPage() {
               onChange={(e) => {
                 setSelectedListaId(e.target.value);
                 setPrecioLimites(null);
+                setPrecioTierLabel(null);
                 setNuevoDetalle(emptyNuevoDetalle());
               }}
               className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
@@ -1305,7 +1391,37 @@ export default function CrearPedidoVentaPage() {
                     <span className="text-[10px] text-slate-400 font-mono">{d.bienId}</span>
                   </td>
                   <td className="p-3 text-slate-600 text-[11px]">{getPresentacionNombre(d.bienId ?? "", d.presentacionId ?? "")}</td>
-                  <td className="p-3 text-center font-mono">{Number(d.cantidad).toFixed(3)}</td>
+                  <td className="p-3 text-center">
+                    {d._desdeCotizacion ? (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          max={d._cantidadOrigen}
+                          step="0.001"
+                          value={d.cantidad ?? ""}
+                          onChange={(e) => {
+                            const raw  = Number(e.target.value);
+                            const max  = d._cantidadOrigen ?? raw;
+                            const clamped = Math.min(Math.max(1, raw), max);
+                            setDetalles((prev) =>
+                              prev.map((item, idx) =>
+                                idx === i ? { ...item, cantidad: clamped } : item
+                              )
+                            );
+                          }}
+                          className={`w-20 border rounded-lg px-2 py-1.5 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-all ${
+                            Number(d.cantidad) > (d._cantidadOrigen ?? Infinity) || Number(d.cantidad) < 1
+                              ? "border-red-400 ring-1 ring-red-300"
+                              : "border-slate-300"
+                          }`}
+                        />
+                        <span className="text-[9px] text-slate-400 font-mono">máx {d._cantidadOrigen?.toFixed(3)}</span>
+                      </div>
+                    ) : (
+                      <span className="font-mono">{Number(d.cantidad).toFixed(3)}</span>
+                    )}
+                  </td>
                   <td className="p-3 text-right font-mono">{formatMoney(Number(d.precio))}</td>
                   <td className="p-3 text-right font-mono text-slate-500">{Number(d.descuento_producto ?? 0).toFixed(2)}%</td>
                   <td className="p-3 text-right font-mono font-semibold text-slate-800">{formatMoney(calcImporte(d))}</td>
@@ -1342,6 +1458,7 @@ export default function CrearPedidoVentaPage() {
                       const bienId = e.target.value;
                       const bien = catalogs?.bienes?.find((b) => b.key?.toString() === bienId) as any;
                       setPrecioLimites(null);
+                      setPrecioTierLabel(null);
                       setPresentacionesNuevo([]);
                       setNuevoDetalle((prev) => ({
                         ...prev,
@@ -1382,7 +1499,7 @@ export default function CrearPedidoVentaPage() {
                     type="number" min="0.001" step="0.001"
                     value={nuevoDetalle.cantidad ?? ""}
                     disabled={isBusy}
-                    onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, cantidad: Number(e.target.value) }))}
+                    onChange={(e) => handleCantidadNuevoChange(Number(e.target.value))}
                     className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                   />
                 </td>
@@ -1398,8 +1515,14 @@ export default function CrearPedidoVentaPage() {
                         : "border-slate-200 focus:ring-blue-500"
                     }`}
                   />
-                  {precioLimites && precioLimites.min > 0 && (
-                    <p className="text-[9px] text-slate-400 mt-0.5">Mín: {precioLimites.min.toFixed(2)}</p>
+                  {precioTierLabel && (
+                    <p className={`text-[9px] font-bold mt-0.5 text-right ${
+                      precioTierLabel === "distribuidor" ? "text-purple-600" :
+                      precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
+                    }`}>
+                      {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
+                      {precioLimites && precioLimites.min > 0 ? ` · Mín: ${precioLimites.min.toFixed(2)}` : ""}
+                    </p>
                   )}
                 </td>
                 <td className="p-1.5 w-20">
@@ -1460,6 +1583,12 @@ export default function CrearPedidoVentaPage() {
           onClose={() => setShowStock(false)}
         />
       )}
+
+      <ImportarCotizacionPanel
+        isOpen={showImportCot}
+        onClose={() => setShowImportCot(false)}
+        onImportar={handleImportarCotizacion}
+      />
 
     </div>
   );

@@ -3,6 +3,7 @@
 export interface Cotizacion {
   cotizacionventaId: string;
   tipodoccomercialId?: string;
+  // camelCase (getById normalizado)
   numeroCorrelativo?: string;
   observacion?: string;
   fechaEmision?: string;
@@ -27,6 +28,15 @@ export interface Cotizacion {
   tipoentregaId?: string;
   tiempoValidez?: number;
   detalles?: CotizacionDetalle[];
+  // snake_case (getAll — respuesta directa del API sin normalizar)
+  numero_correlativo?: string;
+  fecha_emision?: string;
+  fecha_vencimiento?: string;
+  tipo_cambio?: number;
+  condicion_pago?: string;
+  valorventa_afecto?: number;
+  valorventa_inafecto?: number;
+  tiempo_validez?: number;
 
   // Objetos anidados del API
   tipoDocumentoComercial?: { descripcion?: string; abreviatura?: string };

@@ -25,11 +25,6 @@ export interface BienListaPrecio {
   observacion?: string;
 }
 
-export interface MonedaListaPrecio {
-  descripcion: string;
-  abreviatura: string;
-}
-
 // =====================================================
 // DETALLE DE LISTA DE PRECIOS (GET)
 // =====================================================
@@ -37,25 +32,17 @@ export interface MonedaListaPrecio {
 export interface ListaPrecioDetalle {
   listaprecioId: string;
   presentacionId: string;
-  bienId?: string;
-  precio_nuevo?: number;
-  porcentaje_descuento?: number;
-  precio_nuevo_minimo?: number;
   costoValorizado?: number;
   utilidad?: number;
-  precio_nuevo_dol?: number;
-  porcentaje_descuento_dol?: number;
-  precio_nuevo_minimo_dol?: number;
-  precio_nuevo_eur?: number;
-  porcentaje_descuento_eur?: number;
-  precio_nuevo_minimo_eur?: number;
-  tipo_cambio_dol?: number;
-  tipo_cambio_eur?: number;
-  monedaId?: string;
+  cantidad_minorista?: number;
+  precio_minimo_minorista?: number;
+  cantidad_mayorista?: number;
+  precio_minimo_mayorista?: number;
+  cantidad_distribuidor?: number;
+  precio_minimo_distribuidor?: number;
 
   presentacion?: PresentacionListaPrecio;
   bien?: BienListaPrecio;
-  moneda?: MonedaListaPrecio;
 }
 
 // =====================================================
@@ -130,20 +117,14 @@ export interface EstadoListaPrecio {
 
 export interface ListaPrecioDetalleDTO {
   presentacionId: string;
-  precio_nuevo?: number;
-  porcentaje_descuento?: number;
-  precio_nuevo_minimo?: number;
   costoValorizado?: number;
   utilidad?: number;
-  precio_nuevo_dol?: number;
-  porcentaje_descuento_dol?: number;
-  precio_nuevo_minimo_dol?: number;
-  precio_nuevo_eur?: number;
-  porcentaje_descuento_eur?: number;
-  precio_nuevo_minimo_eur?: number;
-  tipo_cambio_dol?: number;
-  tipo_cambio_eur?: number;
-  monedaId?: string;
+  cantidad_minorista?: number;
+  precio_minimo_minorista?: number;
+  cantidad_mayorista?: number;
+  precio_minimo_mayorista?: number;
+  cantidad_distribuidor?: number;
+  precio_minimo_distribuidor?: number;
 }
 
 // =====================================================

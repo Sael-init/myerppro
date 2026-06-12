@@ -6,6 +6,7 @@ import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import pedidoventaService from "@/services/pedidoventaService";
 import documentoVentaService from "@/services/documentoventaService";
+import { imprimirPedidoVenta } from "@/utils/printPedidoVenta";
 import type { KeyValueOption } from "@/types/Documentoventa.types";
 import Modal from "@/components/ui/Modal";
 
@@ -36,6 +37,8 @@ import {
   IconTruckDelivery,
   IconCalendar,
   IconEye,
+  IconPrinter,
+  IconFileDescription,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 
@@ -297,6 +300,7 @@ const confirmConfig: Record<ConfirmType, { title: string; msg: string; btnLabel:
 interface PedidoMenuProps {
   row:            PedidoVenta;
   onView:         () => void;
+  onPrint:        () => void;
   onEdit?:        () => void;
   onAprobar?:     () => void;
   onDesaprobar?:  () => void;
@@ -306,7 +310,7 @@ interface PedidoMenuProps {
 }
 
 const PedidoAccionesMenu = ({
-  row, onView, onEdit, onAprobar, onDesaprobar, onAnular, onComprometer, onDelete,
+  row, onView, onPrint, onEdit, onAprobar, onDesaprobar, onAnular, onComprometer, onDelete,
 }: PedidoMenuProps) => {
   const [open, setOpen] = useState(false);
   return (
@@ -335,6 +339,14 @@ const PedidoAccionesMenu = ({
               <circle cx="12" cy="12" r="3"/>
             </svg>
             Ver detalle
+          </button>
+
+          <button
+            onClick={() => { setOpen(false); onPrint(); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <IconPrinter size={14} />
+            Imprimir / Descargar
           </button>
 
           {onEdit && (
@@ -617,14 +629,38 @@ export default function PedidoVentaPage() {
     router.push(`/dashboard/pedidoventa/crear?edit=${row.pedidoventaId}`);
   };
 
+  // ── Imprimir ──────────────────────────────────────────────────────────────
+  const [printingId, setPrintingId] = useState<string | null>(null);
+
+  const handlePrint = async (row: PedidoVenta) => {
+    if (!row.pedidoventaId || printingId) return;
+    try {
+      setPrintingId(row.pedidoventaId);
+      const full    = await pedidoventaService.getById(row.pedidoventaId);
+      const logoUrl = `${window.location.origin}/image/logo.png`;
+      imprimirPedidoVenta(full, logoUrl);
+    } catch {
+      toast.error("No se pudo obtener los datos para imprimir");
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
   // ── Columnas ──────────────────────────────────────────────────────────────
   const columns = [
     {
       header: "Correlativo",
-      width: "160px",
+      width: "175px",
       render: (row: PedidoVenta) => (
-        // CorrelativoDespacho encapsula TODA la lógica de colores del ASPX
-        <CorrelatvoDespacho row={row} diasOptimo={diasOptimo} diasRevisar={diasRevisar} />
+        <div className="flex flex-col gap-1">
+          <CorrelatvoDespacho row={row} diasOptimo={diasOptimo} diasRevisar={diasRevisar} />
+          {(row as any).cotizacionventaId && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-mono text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded self-start">
+              <IconFileDescription size={9} />
+              {(row as any).cotizacionventaId}
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -718,6 +754,7 @@ export default function PedidoVentaPage() {
                 setViewPedidoId(row.pedidoventaId);
                 setShowViewModal(true);
               }}
+              onPrint={() => handlePrint(row)}
               onEdit={esRegistrado        ? () => handleEdit(row)                : undefined}
               onAprobar={esRegistrado     ? () => openConfirm("aprobar", row)    : undefined}
               onDesaprobar={esAprobado    ? () => openConfirm("desaprobar", row) : undefined}

@@ -31,6 +31,7 @@ export interface PedidoVenta {
   estado_almacen?: string;
   estado_documento_sunat?: string;
   listaprecioId?: string;
+  cotizacionventaId?: string;
   ultima_fechaUpdate?: string;
   dias_diferencia?: number;
   fecha_limite_despacho?: string;
@@ -49,6 +50,7 @@ export interface PedidoVenta {
   listaprecio?: { codigo_lista?: string; descripcion?: string; estado_listprec?: string };
   estadoalmacen?: { descripcion?: string };
   estadofacturacion?: { descripcion?: string };
+  cotizacion?: { numero_correlativo?: string };
   detalles?: PedidoVentaDetalle[];
 }
 
@@ -100,6 +102,7 @@ export interface PedidoVentaDetalleFull {
   detalle: PedidoVentaDetalle[];
   pedidoventa_acciones: PedidoVentaAccion[];
   historial_sucesos: HistorialSuceso[];
+  cotizacion?: { numero_correlativo?: string };
 }
 
 export interface FiltrosPedidoVenta {

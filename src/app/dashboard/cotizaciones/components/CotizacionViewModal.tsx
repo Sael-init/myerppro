@@ -247,8 +247,10 @@ export default function CotizacionViewModal({ cotizacionventaId, isOpen, onClose
               <table className="w-full text-sm">
                 <thead className="bg-slate-100 text-slate-600">
                   <tr>
-                    {["#", "Producto", "Presentación", "Cant.", "Precio", "Desc. %", "Importe", "IGV"].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left text-[11px] font-bold uppercase whitespace-nowrap">
+                    {["#", "Producto", "Presentación", "Cant.", "Saldo Cant.", "Precio", "Desc. %", "Importe", "IGV"].map((h) => (
+                      <th key={h} className={`px-3 py-2 text-[11px] font-bold uppercase whitespace-nowrap ${
+                        ["Cant.", "Saldo Cant.", "Precio", "Desc. %", "Importe"].includes(h) ? "text-right" : "text-left"
+                      }`}>
                         {h}
                       </th>
                     ))}
@@ -257,7 +259,7 @@ export default function CotizacionViewModal({ cotizacionventaId, isOpen, onClose
                 <tbody>
                   {detalles.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-8 text-slate-400 text-xs italic">
+                      <td colSpan={9} className="text-center py-8 text-slate-400 text-xs italic">
                         Sin detalles
                       </td>
                     </tr>
@@ -266,21 +268,30 @@ export default function CotizacionViewModal({ cotizacionventaId, isOpen, onClose
                       <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
                         <td className="px-3 py-2 text-slate-400 font-mono text-xs">{d.item ?? i + 1}</td>
                         <td className="px-3 py-2">
-                          <p className="font-semibold text-slate-800 text-xs">{d.bien?.descripcion || d.bienId}</p>
-                          {(d.bien?.codAdmin || d.bien?.cod_admin) && (
-                            <p className="text-[10px] text-slate-400">{d.bien.codAdmin ?? d.bien.cod_admin}</p>
-                          )}
+                          <p className="font-semibold text-slate-800 text-xs uppercase">
+                            {d.bien?.descripcion || d.bienId}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            {d.bien?.codAdmin ?? d.bien?.cod_admin ?? d.bienId}
+                          </p>
                         </td>
                         <td className="px-3 py-2 text-xs text-slate-600">
-                          {d.presentacion?.descripcion || d.presentacionId}
+                          <span>{d.presentacion?.descripcion || d.presentacionId}</span>
                           {d.presentacion?.cantidad != null && (
-                            <span className="text-[10px] text-slate-400 ml-1">({d.presentacion.cantidad} kg)</span>
+                            <span className="text-[10px] text-slate-400 ml-1">
+                              ({d.presentacion.cantidad} kg)
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-xs">{fmt(d.cantidad)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-blue-600">
+                          {fmt((d as any).saldoCantidad ?? (d as any).saldo_cantidad)}
+                        </td>
                         <td className="px-3 py-2 text-right font-mono text-xs">{fmt(d.precio)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs text-slate-500">
-                          {d.descuentoProducto != null ? `${Number(d.descuentoProducto).toFixed(2)}%` : "—"}
+                        <td className="px-3 py-2 text-right font-mono text-xs italic text-slate-400">
+                          {d.descuentoProducto != null
+                            ? `${Number(d.descuentoProducto).toFixed(2)}%`
+                            : "0.00%"}
                         </td>
                         <td className="px-3 py-2 text-right font-mono font-bold text-xs text-slate-800">
                           {fmt(d.importe)}

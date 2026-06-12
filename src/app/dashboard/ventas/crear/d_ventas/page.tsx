@@ -687,16 +687,8 @@ function CrearDocumentoVentaContent() {
       let precio = 0;
       let limites: PrecioLimites | null = null;
       if (det) {
-        if ((formData as any).monedaId === "002") {
-          precio  = det.precio_nuevo_dol ?? 0;
-          limites = { min: det.precio_nuevo_minimo_dol ?? 0, max: det.precio_nuevo_dol ?? 0 };
-        } else if ((formData as any).monedaId === "003") {
-          precio  = det.precio_nuevo_eur ?? 0;
-          limites = { min: det.precio_nuevo_minimo_eur ?? 0, max: det.precio_nuevo_eur ?? 0 };
-        } else {
-          precio  = det.precio_nuevo ?? 0;
-          limites = { min: det.precio_nuevo_minimo ?? 0, max: det.precio_nuevo ?? 0 };
-        }
+        precio  = det.precio_minimo_minorista ?? 0;
+        limites = { min: det.precio_minimo_minorista ?? 0, max: det.precio_minimo_minorista ?? 0 };
       }
       setPrecioLimitesNuevo(limites);
       setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));

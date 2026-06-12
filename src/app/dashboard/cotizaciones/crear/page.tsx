@@ -52,7 +52,7 @@ const TENANT_ID         = "1";
 const CUENTA_USUARIO_ID = "CU0002";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TrabajadorDDL (reutilizado de pedidoventa)
+// TrabajadorDDL
 // ─────────────────────────────────────────────────────────────────────────────
 function TrabajadorDDL({
   empresaId,
@@ -101,8 +101,8 @@ function TrabajadorDDL({
       (Array.isArray(res?.items) && res.items) ||
       (Array.isArray(res) && res) ||
       [];
-    const meta       = res?.meta || res?.data?.meta || {};
-    const totalPages = meta?.totalPages ?? 1;
+    const meta        = res?.meta || res?.data?.meta || {};
+    const totalPages  = meta?.totalPages ?? 1;
     const currentPage = meta?.currentPage ?? undefined;
     return { data, totalPages, currentPage };
   };
@@ -250,14 +250,14 @@ const SectionHeader = ({ icon, title }: { icon: React.ReactNode; title: string }
 const formatMoney = (val: number) =>
   new Intl.NumberFormat("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
+// Sin descuentoProducto
 const emptyDetalle = (): CotizacionDetalle => ({
-  bienId:            "",
-  presentacionId:    "",
-  cantidad:          1,
-  precio:            0,
-  descuentoProducto: 0,
-  afectoInafecto:    true,
-  observacion:       "",
+  bienId:         "",
+  presentacionId: "",
+  cantidad:       1,
+  precio:         0,
+  afectoInafecto: true,
+  observacion:    "",
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,21 +281,21 @@ export default function CrearCotizacionPage() {
   const [loadingPres,         setLoadingPres]         = useState(false);
 
   const [form, setForm] = useState({
-    clienteId:      "",
-    trabajadorId:   "",
-    monedaId:       "",
-    tipoCambio:     "1",
-    formaspagoId:   "",
-    condicionPago:  "",
-    tipoentregaId:  "",
-    tiempoValidez:  "",
+    clienteId:        "",
+    trabajadorId:     "",
+    monedaId:         "",
+    tipoCambio:       "1",
+    formaspagoId:     "",
+    condicionPago:    "",
+    tipoentregaId:    "",
+    tiempoValidez:    "",
     fechaVencimiento: "",
     ordcompraNumero:  "",
     observacion:      "",
   });
 
-  const [detalles,      setDetalles]      = useState<CotizacionDetalle[]>([]);
-  const [nuevoDetalle,  setNuevoDetalle]  = useState<CotizacionDetalle>(emptyDetalle());
+  const [detalles,     setDetalles]     = useState<CotizacionDetalle[]>([]);
+  const [nuevoDetalle, setNuevoDetalle] = useState<CotizacionDetalle>(emptyDetalle());
 
   // ── Carga inicial de catálogos ─────────────────────────────────────────────
   useEffect(() => {
@@ -342,29 +342,28 @@ export default function CrearCotizacionPage() {
         const res = await cotizacionService.getById(editId);
         const ct  = (res as any).cotizacion ?? res;
         setForm({
-          clienteId:        ct.clienteId          ?? "",
-          trabajadorId:     ct.trabajadorId       ?? "",
-          monedaId:         ct.monedaId           ?? "",
-          tipoCambio:       String(ct.tipoCambio  ?? "1"),
-          formaspagoId:     ct.formaspagoId       ?? "",
-          condicionPago:    ct.condicionPago       ?? "",
-          tipoentregaId:    ct.tipoentregaId      ?? "",
+          clienteId:        ct.clienteId         ?? "",
+          trabajadorId:     ct.trabajadorId      ?? "",
+          monedaId:         ct.monedaId          ?? "",
+          tipoCambio:       String(ct.tipoCambio ?? "1"),
+          formaspagoId:     ct.formaspagoId      ?? "",
+          condicionPago:    ct.condicionPago      ?? "",
+          tipoentregaId:    ct.tipoentregaId     ?? "",
           tiempoValidez:    ct.tiempoValidez != null ? String(ct.tiempoValidez) : "",
-          fechaVencimiento: ct.fechaVencimiento   ? ct.fechaVencimiento.substring(0, 10) : "",
-          ordcompraNumero:  ct.ordcompraNumero    ?? "",
-          observacion:      ct.observacion        ?? "",
+          fechaVencimiento: ct.fechaVencimiento  ? ct.fechaVencimiento.substring(0, 10) : "",
+          ordcompraNumero:  ct.ordcompraNumero   ?? "",
+          observacion:      ct.observacion       ?? "",
         });
         const rawDetalles: any[] = ct.detalles ?? [];
         setDetalles(
           rawDetalles.map((d: any, idx: number) => ({
-            item:              d.item ?? idx + 1,
-            bienId:            d.bienId            ?? "",
-            presentacionId:    d.presentacionId    ?? "",
-            cantidad:          Number(d.cantidad   ?? 1),
-            precio:            Number(d.precio     ?? 0),
-            descuentoProducto: Number(d.descuentoProducto ?? 0),
-            afectoInafecto:    d.afectoInafecto     ?? true,
-            observacion:       d.observacion        ?? "",
+            item:           d.item ?? idx + 1,
+            bienId:         d.bienId         ?? "",
+            presentacionId: d.presentacionId ?? "",
+            cantidad:       Number(d.cantidad ?? 1),
+            precio:         Number(d.precio   ?? 0),
+            afectoInafecto: d.afectoInafecto  ?? true,
+            observacion:    d.observacion     ?? "",
           }))
         );
       } catch (err: any) {
@@ -436,11 +435,24 @@ export default function CrearCotizacionPage() {
     } catch { /* silencioso */ }
   }, []);
 
-  // ── Detalle ────────────────────────────────────────────────────────────────
+  // ── Auto-calcular fechaVencimiento a partir de tiempoValidez ──────────────
+  useEffect(() => {
+    const dias = Number(form.tiempoValidez);
+    if (!dias || dias <= 0) {
+      setForm((prev) => ({ ...prev, fechaVencimiento: "" }));
+      return;
+    }
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    setForm((prev) => ({ ...prev, fechaVencimiento: d.toISOString().split("T")[0] }));
+  }, [form.tiempoValidez]);
+
+  // ── Cálculos ───────────────────────────────────────────────────────────────
   const IGV_RATE = 0.18;
 
+  // Precio enviado incluye IGV → importe bruto = cantidad × precio
   const calcImporte = (d: CotizacionDetalle) =>
-    Number(d.cantidad ?? 0) * Number(d.precio ?? 0) * (1 - Number(d.descuentoProducto ?? 0) / 100);
+    Number(d.cantidad ?? 0) * Number(d.precio ?? 0);
 
   const totalGeneral = useMemo(
     () => detalles.reduce((acc, d) => acc + calcImporte(d), 0),
@@ -450,13 +462,13 @@ export default function CrearCotizacionPage() {
   const resumen = useMemo(() => {
     let gravado = 0, exonerado = 0, igvTotal = 0;
     detalles.forEach((d) => {
-      const sub = calcImporte(d);
+      const bruto = calcImporte(d);
       if (d.afectoInafecto !== false) {
-        const base = sub / (1 + IGV_RATE);
+        const base = bruto / (1 + IGV_RATE);
         gravado  += base;
-        igvTotal += sub - base;
+        igvTotal += bruto - base;
       } else {
-        exonerado += sub;
+        exonerado += bruto;
       }
     });
     return {
@@ -467,6 +479,7 @@ export default function CrearCotizacionPage() {
     };
   }, [detalles]);
 
+  // ── Detalle ────────────────────────────────────────────────────────────────
   const handleAgregarDetalle = async () => {
     if (!nuevoDetalle.bienId)               return toast.error("Seleccione el producto");
     if (!nuevoDetalle.presentacionId)       return toast.error("Seleccione la presentación");
@@ -485,10 +498,10 @@ export default function CrearCotizacionPage() {
 
   // ── Validación ─────────────────────────────────────────────────────────────
   const validate = (): string | null => {
-    if (!form.clienteId.trim())     return "El cliente es requerido";
-    if (!form.trabajadorId.trim())  return "El vendedor es requerido";
-    if (!form.monedaId.trim())      return "La moneda es requerida";
-    if (detalles.length === 0)      return "Agregue al menos un ítem a la cotización";
+    if (!form.clienteId.trim())    return "El cliente es requerido";
+    if (!form.trabajadorId.trim()) return "El vendedor es requerido";
+    if (!form.monedaId.trim())     return "La moneda es requerida";
+    if (detalles.length === 0)     return "Agregue al menos un ítem a la cotización";
     return null;
   };
 
@@ -498,36 +511,33 @@ export default function CrearCotizacionPage() {
     if (err) { toast.error(err); return; }
     try {
       setSaving(true);
-      const valorventaAfecto   = detalles.filter((d) => d.afectoInafecto !== false).reduce((acc, d) => acc + calcImporte(d) / (1 + IGV_RATE), 0);
-      const valorventaInafecto = detalles.filter((d) => d.afectoInafecto === false).reduce((acc, d) => acc + calcImporte(d), 0);
 
       const payload: Partial<Cotizacion> = {
         clienteId:        form.clienteId.trim(),
         trabajadorId:     form.trabajadorId.trim(),
         monedaId:         form.monedaId.trim(),
         tipoCambio:       Number(form.tipoCambio) || 1,
-        formaspagoId:     form.formaspagoId.trim()     || undefined,
-        condicionPago:    form.condicionPago.trim()     || undefined,
-        tipoentregaId:    form.tipoentregaId.trim()     || undefined,
+        formaspagoId:     form.formaspagoId.trim()    || undefined,
+        condicionPago:    form.condicionPago.trim()    || undefined,
+        tipoentregaId:    form.tipoentregaId.trim()    || undefined,
         tiempoValidez:    form.tiempoValidez ? Number(form.tiempoValidez) : undefined,
-        fechaVencimiento: form.fechaVencimiento          || undefined,
-        ordcompraNumero:  form.ordcompraNumero.trim()    || undefined,
-        observacion:      form.observacion.trim()        || undefined,
-        valorventaAfecto:   Math.round(valorventaAfecto   * 100) / 100,
-        valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
+        fechaVencimiento: form.fechaVencimiento         || undefined,
+        ordcompraNumero:  form.ordcompraNumero.trim()   || undefined,
+        observacion:      form.observacion.trim()       || undefined,
+        valorventaAfecto:   resumen.gravado,
+        valorventaInafecto: resumen.exonerado,
         igv:              resumen.igv,
         total:            resumen.total,
         cuentausuarioId:  CUENTA_USUARIO_ID,
         empresaId:        EMPRESA_ID,
         detalles: detalles.map((d, idx) => ({
-          item:              idx + 1,
-          bienId:            d.bienId,
-          presentacionId:    d.presentacionId,
-          cantidad:          Number(d.cantidad),
-          precio:            Number(d.precio),
-          descuentoProducto: Number(d.descuentoProducto ?? 0),
-          afectoInafecto:    d.afectoInafecto ?? true,
-          observacion:       d.observacion ?? "",
+          item:           idx + 1,
+          bienId:         d.bienId,
+          presentacionId: d.presentacionId,
+          cantidad:       Number(d.cantidad),
+          precio:         Number(d.precio),
+          afectoInafecto: d.afectoInafecto ?? true,
+          observacion:    d.observacion ?? "",
         })),
       };
 
@@ -563,11 +573,16 @@ export default function CrearCotizacionPage() {
           </button>
           <div>
             <div className="flex items-center gap-1 text-xs text-slate-400 mb-0.5">
-              <span className="hover:text-blue-600 cursor-pointer transition-colors" onClick={() => router.push("/dashboard/cotizaciones")}>
+              <span
+                className="hover:text-blue-600 cursor-pointer transition-colors"
+                onClick={() => router.push("/dashboard/cotizaciones")}
+              >
                 Cotizaciones
               </span>
               <span>/</span>
-              <span className="text-slate-600 font-semibold">{isEditing ? "Editar Cotización" : "Nueva Cotización"}</span>
+              <span className="text-slate-600 font-semibold">
+                {isEditing ? "Editar Cotización" : "Nueva Cotización"}
+              </span>
             </div>
             <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
               {isEditing ? "Editar Cotización" : "Nueva Cotización"}
@@ -715,14 +730,21 @@ export default function CrearCotizacionPage() {
                 />
               </div>
 
-              {/* Fecha Vencimiento */}
-              <DateInput
-                label="Fecha Vencimiento"
-                name="fechaVencimiento"
-                value={form.fechaVencimiento}
-                onChange={handleChange}
-                disabled={isBusy}
-              />
+              {/* Fecha Vencimiento — calculada automáticamente */}
+              <div className="flex flex-col gap-1.5">
+                <DateInput
+                  label="Fecha Vencimiento (automática)"
+                  name="fechaVencimiento"
+                  value={form.fechaVencimiento}
+                  onChange={handleChange}
+                  disabled={true}
+                />
+                {!form.fechaVencimiento && (
+                  <p className="text-[10px] text-slate-400 italic ml-1 normal-case">
+                    Ingrese el tiempo de validez para calcularla
+                  </p>
+                )}
+              </div>
 
               {/* Ord. Compra N° */}
               <div className="flex flex-col gap-1.5">
@@ -816,7 +838,6 @@ export default function CrearCotizacionPage() {
                 <th className="p-3">Presentación</th>
                 <th className="p-3 text-center w-20">Cant.</th>
                 <th className="p-3 text-right w-28">Precio</th>
-                <th className="p-3 text-right w-20">Desc. %</th>
                 <th className="p-3 text-right w-28">Importe</th>
                 <th className="p-3 text-center w-20">IGV</th>
                 <th className="p-3">Obs.</th>
@@ -826,7 +847,7 @@ export default function CrearCotizacionPage() {
             <tbody className="divide-y divide-slate-100">
               {detalles.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-3 text-center text-slate-400 italic text-[11px]">
+                  <td colSpan={9} className="px-4 py-3 text-center text-slate-400 italic text-[11px]">
                     Sin ítems aún — usa la fila de abajo para agregar productos.
                   </td>
                 </tr>
@@ -847,10 +868,11 @@ export default function CrearCotizacionPage() {
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono">{d.bienId}</span>
                   </td>
-                  <td className="p-3 text-slate-600 text-[11px]">{getPresentacionNombre(d.bienId ?? "", d.presentacionId ?? "")}</td>
+                  <td className="p-3 text-slate-600 text-[11px]">
+                    {getPresentacionNombre(d.bienId ?? "", d.presentacionId ?? "")}
+                  </td>
                   <td className="p-3 text-center font-mono">{Number(d.cantidad).toFixed(3)}</td>
                   <td className="p-3 text-right font-mono">{formatMoney(Number(d.precio))}</td>
-                  <td className="p-3 text-right font-mono text-slate-500">{Number(d.descuentoProducto ?? 0).toFixed(2)}%</td>
                   <td className="p-3 text-right font-mono font-semibold text-slate-800">{formatMoney(calcImporte(d))}</td>
                   <td className="p-3 text-center">
                     {d.afectoInafecto === false
@@ -936,29 +958,15 @@ export default function CrearCotizacionPage() {
                     className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                   />
                 </td>
-                <td className="p-1.5 w-20">
-                  <input
-                    type="number" min={0} step="0.01"
-                    value={nuevoDetalle.descuentoProducto ?? 0}
-                    disabled={isBusy}
-                    onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, descuentoProducto: Number(e.target.value) }))}
-                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
-                  />
-                </td>
                 <td className="p-2 text-right font-mono text-xs text-slate-500">
                   {nuevoDetalle.bienId ? formatMoney(calcImporte(nuevoDetalle)) : "—"}
                 </td>
                 <td className="p-2 text-center">
-                  {nuevoDetalle.bienId ? (
-                    <select
-                      value={nuevoDetalle.afectoInafecto === false ? "false" : "true"}
-                      onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, afectoInafecto: e.target.value === "true" }))}
-                      className="border border-slate-200 rounded px-1 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="true">Afecto</option>
-                      <option value="false">Inafecto</option>
-                    </select>
-                  ) : <span className="text-slate-300 text-[10px]">—</span>}
+                  {nuevoDetalle.bienId
+                    ? nuevoDetalle.afectoInafecto === false
+                      ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                      : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
+                    : <span className="text-slate-300 text-[10px]">—</span>}
                 </td>
                 <td className="p-2 text-slate-300 text-[10px]">—</td>
                 <td className="p-2 text-center">
@@ -977,7 +985,7 @@ export default function CrearCotizacionPage() {
             {detalles.length > 0 && (
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr>
-                  <td colSpan={6} className="px-3 py-3 text-right text-xs font-bold text-slate-600 uppercase">Total estimado</td>
+                  <td colSpan={5} className="px-3 py-3 text-right text-xs font-bold text-slate-600 uppercase">Total estimado</td>
                   <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">{formatMoney(totalGeneral)}</td>
                   <td colSpan={3} />
                 </tr>
