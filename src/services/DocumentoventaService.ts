@@ -51,7 +51,9 @@ class DocumentoVentaService {
         let hasData = false;
         Object.entries(filters).forEach(([key, val]) => {
           if (Array.isArray(val) ? val.length > 0 : val !== undefined && val !== null && val !== '') {
-            cleaned[key] = val;
+            // El SP espera fechaInicio/fechaFin, el frontend usa fechaDesde/fechaHasta
+            const mappedKey = key === 'fechaDesde' ? 'fechaInicio' : key === 'fechaHasta' ? 'fechaFin' : key;
+            cleaned[mappedKey] = val;
             hasData = true;
           }
         });

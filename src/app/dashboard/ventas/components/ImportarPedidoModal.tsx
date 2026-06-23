@@ -10,7 +10,7 @@ import {
   IconAlertCircle,
   IconInbox,
 } from "@tabler/icons-react";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers de fecha

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
 import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
 import Link from "next/link";

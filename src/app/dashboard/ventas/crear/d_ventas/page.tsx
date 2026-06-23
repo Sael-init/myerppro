@@ -8,7 +8,7 @@ import ImportarPedidoModal, {
   type PedidoVentaRow,
 } from "../../components/ImportarPedidoModal";
 
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import condicionPagoService from "@/services/condicionpagoService";
 import formasPagoService from "@/services/formaspagoService";
 import trabajadorService from "@/services/trabajadorService";

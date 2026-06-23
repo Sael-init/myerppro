@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import Modal from "@/components/ui/Modal";
 import {
   IconLoader,
