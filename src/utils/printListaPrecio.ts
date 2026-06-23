@@ -32,6 +32,9 @@ export function generarHtmlListaPrecio(lista: any, logoUrl: string): string {
   const estado      = lista.estado_listprec ?? "-";
   const tipo        = lista.tipoListaPrecio?.descripcion ?? (lista.tipolistaprecioId ? `Tipo ${lista.tipolistaprecioId}` : "-");
   const esDefault   = lista.listadefault ? "SÍ" : "NO";
+  const monedaLabel = lista.moneda
+    ? `${lista.moneda.simbolomoneda} ${lista.moneda.descripcion} (${lista.moneda.abreviatura})`
+    : lista.monedaId ?? null;
 
   const estadoColor = ["ACT","Activo","ACTIVO","Disponible","DISPONIBLE"].includes(estado)
     ? "#15803d"
@@ -105,7 +108,6 @@ export function generarHtmlListaPrecio(lista: any, logoUrl: string): string {
   <!-- ENCABEZADO -->
   <div style="display:flex;border:1px solid #9ca3af;margin-bottom:0">
     <div style="flex:1;padding:10px 14px 8px;border-right:1px solid #9ca3af">
-      ${logoUrl ? `<img src="${logoUrl}" alt="Logo" style="height:46px;object-fit:contain;margin-bottom:6px;display:block"/>` : ""}
       <div style="font-weight:700;font-size:8.8pt;text-transform:uppercase;line-height:1.35">${EMPRESA_NOMBRE}</div>
       <div style="font-size:6.5pt;color:#555;font-style:italic;margin-top:2px;line-height:1.4">${EMPRESA_GIRO}</div>
       <div style="font-size:6.5pt;color:#333;margin-top:3px"><strong>Dirección:</strong> ${EMPRESA_DIRECCION}</div>
@@ -155,6 +157,10 @@ export function generarHtmlListaPrecio(lista: any, logoUrl: string): string {
       <span style="font-weight:700;font-size:7pt;text-transform:uppercase;color:#64748b">ID:</span>
       <span style="font-size:7.5pt;font-family:monospace;margin-left:4px;color:#374151">${lista.listaprecioId}</span>
     </div>
+    ${monedaLabel ? `<div>
+      <span style="font-weight:700;font-size:7pt;text-transform:uppercase;color:#64748b">Moneda:</span>
+      <span style="font-size:8pt;margin-left:4px;font-weight:700">${monedaLabel}</span>
+    </div>` : ""}
   </div>
 
   <!-- TABLA PRECIOS -->
@@ -167,11 +173,11 @@ export function generarHtmlListaPrecio(lista: any, logoUrl: string): string {
           <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;border-right:1px solid #2d5080;width:62px">Costo</th>
           <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:center;border-right:1px solid #2d5080;width:42px">Utl.%</th>
           <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:center;border-right:1px solid #2d5080;width:42px;background:#1e4d8c">Cant.</th>
-          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;border-right:1px solid #2d5080;width:66px;background:#1e4d8c">P.Mín Min.</th>
+          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;border-right:1px solid #2d5080;width:66px;background:#1e4d8c">Precio</th>
           <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:center;border-right:1px solid #2d5080;width:42px;background:#374151">Cant.</th>
-          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;border-right:1px solid #2d5080;width:66px;background:#374151">P.Mín May.</th>
+          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;border-right:1px solid #2d5080;width:66px;background:#374151">Precio</th>
           <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:center;border-right:1px solid #2d5080;width:42px;background:#4c1d95">Cant.</th>
-          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;width:66px;background:#4c1d95">P.Mín Dist.</th>
+          <th style="padding:5px 4px;font-size:6.5pt;font-weight:700;text-transform:uppercase;text-align:right;width:66px;background:#4c1d95">Precio</th>
         </tr>
         <tr style="background:#dbeafe;font-size:6pt;color:#1e40af;font-weight:700;text-transform:uppercase">
           <td colspan="4" style="padding:2px 5px;border-right:1px solid #93c5fd;border-bottom:1px solid #9ca3af"></td>

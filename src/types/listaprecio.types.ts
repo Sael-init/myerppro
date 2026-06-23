@@ -84,9 +84,11 @@ export interface ListaPrecio {
   fecha_creacion?: string;
   listadefault?: boolean;
   empresaId: string;
+  monedaId?: string | null;
 
   tipoListaPrecio?: TipoListaPrecioRelacionado;
   estado?: EstadoListaPrecioRelacionado;
+  moneda?: { descripcion: string; abreviatura: string; simbolomoneda: string };
   detalles?: ListaPrecioDetalle[];
   perfiles?: ListaPrecioPerfilRelacionado[];
   puntoventa?: ListaPrecioPuntoVentaRelacionado[];
@@ -139,6 +141,7 @@ export interface CreateListaPrecioDTO {
   fecha_inicio?: string;
   fecha_vencimiento?: string;
   listadefault?: boolean;
+  monedaId?: string | null;
   detalles: ListaPrecioDetalleDTO[];
 }
 
@@ -154,6 +157,7 @@ export interface UpdateListaPrecioDTO {
   fecha_inicio?: string;
   fecha_vencimiento?: string;
   listadefault?: boolean;
+  monedaId?: string | null;
   detalles: ListaPrecioDetalleDTO[];
 }
 

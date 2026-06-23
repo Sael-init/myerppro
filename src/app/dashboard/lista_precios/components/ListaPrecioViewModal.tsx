@@ -187,6 +187,7 @@ export default function ListaPrecioViewModal({ listaprecioId, isOpen, onClose, o
               <InfoField label="Fecha Vencimiento" value={lista.fecha_vencimiento ? new Date(lista.fecha_vencimiento).toLocaleDateString("es-PE") : undefined} />
               <InfoField label="Fecha Creación"    value={lista.fecha_creacion    ? new Date(lista.fecha_creacion).toLocaleDateString("es-PE")    : undefined} />
               <InfoField label="Lista Default"     value={lista.listadefault} />
+              <InfoField label="Moneda"            value={lista.moneda ? `${lista.moneda.simbolomoneda} ${lista.moneda.descripcion} (${lista.moneda.abreviatura})` : lista.monedaId ?? undefined} />
             </dl>
           </section>
 

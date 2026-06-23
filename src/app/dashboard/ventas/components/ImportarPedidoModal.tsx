@@ -28,9 +28,9 @@ function toIso(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
-function daysAgo(n: number): string {
+function daysFromNow(n: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - n);
+  d.setDate(d.getDate() + n);
   return toIso(d);
 }
 
@@ -45,15 +45,26 @@ interface DateInputProps {
 }
 
 function DateInput({ label, value, onChange }: DateInputProps) {
+  const display = value
+    ? value.split("-").reverse().join("/")
+    : "DD/MM/AAAA";
+
   return (
     <div className="flex flex-col gap-1">
       <label className="text-[10px] font-bold text-slate-500 uppercase">{label}</label>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700 bg-white outline-none focus:ring-2 focus:ring-blue-500 hover:border-slate-300 transition-colors cursor-pointer"
-      />
+      <div className="relative">
+        {/* Visualización dd/mm/aaaa */}
+        <div className="border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700 bg-white hover:border-slate-300 transition-colors pointer-events-none select-none min-w-[120px]">
+          {display}
+        </div>
+        {/* Input nativo transparente superpuesto para abrir el selector del browser */}
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        />
+      </div>
     </div>
   );
 }
@@ -139,11 +150,8 @@ export default function ImportarPedidoModal({
   onImportar,
   onClose,
 }: ImportarPedidoModalProps) {
-  const today        = toIso(new Date());
-  const defaultDesde = daysAgo(5);
-
-  const [fechaInicio, setFechaInicio] = useState(defaultDesde);
-  const [fechaFin,    setFechaFin]    = useState(today);
+  const [fechaInicio, setFechaInicio] = useState(toIso(new Date()));
+  const [fechaFin,    setFechaFin]    = useState(daysFromNow(14));
   const [pedidos,     setPedidos]     = useState<PedidoVentaRow[]>([]);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState<string | null>(null);

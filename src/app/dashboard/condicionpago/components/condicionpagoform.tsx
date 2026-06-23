@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, ChangeEvent } from "react";
+import { useEffect, useMemo, useState, ChangeEvent } from "react";
 import Modal from "@/components/ui/Modal";
 import { toast } from "sonner";
 import { IconDeviceFloppy, IconLoader } from "@tabler/icons-react";
 import condicionPagoService from "@/services/condicionpagoService";
-import type { CondicionPago, CondicionPagoForm } from "@/types/condicionpago.types";
+import type { CondicionPago } from "@/types/condicionpago.types";
 
 interface Props {
   isOpen: boolean;
@@ -55,29 +55,18 @@ export default function CondicionPagoFormModal({
   const condicionPagoId = useMemo(() => resolveId(condicionPagoToEdit), [condicionPagoToEdit]);
   const isEdit = Boolean(condicionPagoId);
 
-  const getInitialState = (): CondicionPagoForm => ({
-    condicion_pago: condicionPagoId || "",
-    descripcion: condicionPagoToEdit?.descripcion || "",
-  });
+  const getInitialValue = () =>
+    condicionPagoToEdit?.descripcion || condicionPagoId || "";
 
-  const [form, setForm] = useState<CondicionPagoForm>(getInitialState());
+  const [value, setValue] = useState(getInitialValue());
 
   useEffect(() => {
-    if (isOpen) setForm(getInitialState());
+    if (isOpen) setValue(getInitialValue());
   }, [isOpen, condicionPagoId]);
 
-  const handleChange = useCallback(
-    (field: keyof CondicionPagoForm) => (e: ChangeEvent<HTMLInputElement>) => {
-      setForm((prev) => ({ ...prev, [field]: e.target.value }));
-    },
-    []
-  );
-
   const validate = (): string | null => {
-    if (!normalizeText(form.condicion_pago)) return "El código de condición de pago es obligatorio";
-    if (!normalizeText(form.descripcion)) return "La descripción es obligatoria";
-    if (normalizeText(form.condicion_pago).length > 50) return "El código excede el máximo permitido";
-    if (normalizeText(form.descripcion).length > 200) return "La descripción excede el máximo permitido";
+    if (!normalizeText(value)) return "La condición de pago es obligatoria";
+    if (normalizeText(value).length > 200) return "El valor excede el máximo permitido";
     return null;
   };
 
@@ -100,15 +89,16 @@ export default function CondicionPagoFormModal({
     try {
       setSaving(true);
 
+      const normalized = normalizeText(value).toUpperCase();
       if (isEdit) {
         await condicionPagoService.update(condicionPagoId, {
-          descripcion: normalizeText(form.descripcion).toUpperCase(),
+          descripcion: normalized,
         });
         toast.success("Condición de pago actualizada correctamente");
       } else {
         await condicionPagoService.create({
-          condicion_pago: normalizeText(form.condicion_pago).toUpperCase(),
-          descripcion: normalizeText(form.descripcion).toUpperCase(),
+          condicion_pago: normalized,
+          descripcion: normalized,
         });
         toast.success("Condición de pago registrada correctamente");
       }
@@ -150,21 +140,11 @@ export default function CondicionPagoFormModal({
 
             <div className="grid grid-cols-1 gap-4">
               <FormInput
-                label="Código"
-                value={form.condicion_pago}
-                onChange={handleChange("condicion_pago")}
-                placeholder="Ej. CP001"
+                label="Condición de Pago"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="Ej. CONTADO, CRÉDITO 30 DÍAS, CRÉDITO 60 DÍAS"
                 required
-                disabled={isEdit}
-              />
-
-              <FormInput
-                label="Descripción"
-                value={form.descripcion}
-                onChange={handleChange("descripcion")}
-                placeholder="Ej. Contado, Crédito 30 días, Crédito 60 días"
-                required
-                disabled={false}
               />
             </div>
           </div>

@@ -18,6 +18,9 @@ import documentoVentaService from "@/services/documentoventaService";
 import clienteService        from "@/services/clienteService";
 import monedaService         from "@/services/monedaService";
 import { presentacionService } from "@/services/presentacionService";
+import listaPreciosService   from "@/services/listaprecioService";
+import cuentaUsuarioService  from "@/services/cuentausuarioService";
+import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types";
 
 import type { Cotizacion, CotizacionDetalle } from "@/types/cotizacion.types";
 import type { CondicionPago }                 from "@/types/condicionpago.types";
@@ -45,11 +48,22 @@ import {
   IconChevronDown,
   IconUserCircle,
   IconX,
+  IconEraser,
 } from "@tabler/icons-react";
 
 const EMPRESA_ID        = "005";
 const TENANT_ID         = "1";
 const CUENTA_USUARIO_ID = "CU0002";
+const LISTA_PRECIO_ID   = "092200000001";
+
+interface PrecioTierInfo { precio: number; min: number; }
+const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierInfo => {
+  if (det.cantidad_distribuidor != null && cantidad >= det.cantidad_distribuidor && det.precio_minimo_distribuidor != null)
+    return { precio: det.precio_minimo_distribuidor, min: det.precio_minimo_distribuidor };
+  if (det.cantidad_mayorista != null && cantidad >= det.cantidad_mayorista && det.precio_minimo_mayorista != null)
+    return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista };
+  return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0 };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TrabajadorDDL
@@ -279,6 +293,9 @@ export default function CrearCotizacionPage() {
 
   const [presentacionesNuevo, setPresentacionesNuevo] = useState<{ key: string; value: string; factor: number }[]>([]);
   const [loadingPres,         setLoadingPres]         = useState(false);
+  const [selectedListaId,     setSelectedListaId]     = useState<string>(LISTA_PRECIO_ID);
+  const [listasPrecios,       setListasPrecios]       = useState<ListaPrecio[]>([]);
+  const [listaPrecioDetalles, setListaPrecioDetalles] = useState<ListaPrecioDetalle[]>([]);
 
   const [form, setForm] = useState({
     clienteId:        "",
@@ -332,6 +349,47 @@ export default function CrearCotizacionPage() {
     };
     loadAll();
   }, []);
+
+  // ── Carga listas de precios disponibles ──────────────────────────────────
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [resListas, resCuenta] = await Promise.all([
+          listaPreciosService.getByEmpresa(EMPRESA_ID, 1, 100),
+          cuentaUsuarioService.getById(CUENTA_USUARIO_ID).catch(() => null),
+        ]);
+        const userPerfilesId: string | null = (resCuenta as any)?.perfilesId ?? null;
+        let disponibles = resListas.data.filter(
+          (lp) => (lp.estado_listprec ?? (lp as any).estado?.descripcion ?? "").toLowerCase() === "disponible"
+        );
+        if (userPerfilesId) {
+          disponibles = disponibles.filter(
+            (lp) => lp.perfiles?.some((p) => p.perfilesId === userPerfilesId) ?? false
+          );
+        }
+        const seen = new Set<string>();
+        disponibles = disponibles.filter((lp) => {
+          if (seen.has(lp.listaprecioId)) return false;
+          seen.add(lp.listaprecioId);
+          return true;
+        });
+        setListasPrecios(disponibles);
+        if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === LISTA_PRECIO_ID)) {
+          setSelectedListaId(disponibles[0].listaprecioId);
+        }
+      } catch {}
+    };
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selectedListaId) return;
+    listaPreciosService
+      .getById(selectedListaId)
+      .then((res) => setListaPrecioDetalles(res.detalles ?? []))
+      .catch(() => setListaPrecioDetalles([]));
+  }, [selectedListaId]);
 
   // ── Carga datos para edición ───────────────────────────────────────────────
   useEffect(() => {
@@ -391,8 +449,21 @@ export default function CrearCotizacionPage() {
 
   const bienesDisponibles = useMemo(() => {
     if (!catalogs?.bienes) return [];
-    return catalogs.bienes.map((b) => ({ key: String(b.key), value: b.value || String(b.key) }));
-  }, [catalogs]);
+    const base = catalogs.bienes.map((b) => ({ key: String(b.key), value: b.value || String(b.key) }));
+    if (listaPrecioDetalles.length === 0) return base;
+    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
+    return base.filter((b) => {
+      const pres = catalogs.presentaciones?.find((g) => g.bienId === b.key)?.items ?? [];
+      return (pres as any[]).some((p) => presIds.has(String(p.key)));
+    });
+  }, [catalogs, listaPrecioDetalles]);
+
+  const presentacionOptsNuevo = useMemo(() => {
+    if (presentacionesNuevo.length === 0) return [];
+    if (listaPrecioDetalles.length === 0) return presentacionesNuevo;
+    const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
+    return presentacionesNuevo.filter((p) => presIds.has(p.key));
+  }, [presentacionesNuevo, listaPrecioDetalles]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleChange = useCallback(
@@ -434,6 +505,31 @@ export default function CrearCotizacionPage() {
       setFormasPago((fp as any)?.data ?? fp ?? []);
     } catch { /* silencioso */ }
   }, []);
+
+  const formasPagoFiltradas = useMemo(() => {
+    if (!form.condicionPago || formasPago.length === 0) return [];
+    const selectedCP = condicionesPago.find(
+      (cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === form.condicionPago
+    ) as any;
+    if (!selectedCP) return formasPago;
+    const condDesc = (
+      (selectedCP.descripcion ?? selectedCP.condicion_pago ?? form.condicionPago) as string
+    ).toUpperCase();
+    if (condDesc.includes("CRED")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
+      );
+    } else if (condDesc.includes("GRATU")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
+      );
+    } else {
+      return formasPago.filter((fp: any) => {
+        const fpCond = (fp.condicionPago ?? "").toUpperCase();
+        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
+      });
+    }
+  }, [form.condicionPago, condicionesPago, formasPago]);
 
   // ── Auto-calcular fechaVencimiento a partir de tiempoValidez ──────────────
   useEffect(() => {
@@ -503,6 +599,27 @@ export default function CrearCotizacionPage() {
     if (!form.monedaId.trim())     return "La moneda es requerida";
     if (detalles.length === 0)     return "Agregue al menos un ítem a la cotización";
     return null;
+  };
+
+  // ── Limpiar formulario ────────────────────────────────────────────────────
+  const handleLimpiar = () => {
+    setForm({
+      clienteId:        "",
+      trabajadorId:     "",
+      monedaId:         "",
+      tipoCambio:       "1",
+      formaspagoId:     "",
+      condicionPago:    "",
+      tipoentregaId:    "",
+      tiempoValidez:    "",
+      fechaVencimiento: "",
+      ordcompraNumero:  "",
+      observacion:      "",
+    });
+    setDetalles([]);
+    setNuevoDetalle(emptyDetalle());
+    setPresentacionesNuevo([]);
+    setSelectedListaId(LISTA_PRECIO_ID);
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -599,6 +716,14 @@ export default function CrearCotizacionPage() {
             Cancelar
           </button>
           <button
+            onClick={handleLimpiar}
+            disabled={saving}
+            className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-2"
+            title="Limpiar todos los campos"
+          >
+            <IconEraser size={18} /> Limpiar
+          </button>
+          <button
             onClick={handleSubmit}
             disabled={saving || isBusy}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -682,7 +807,7 @@ export default function CrearCotizacionPage() {
                 <select
                   name="condicionPago"
                   value={form.condicionPago}
-                  onChange={handleChange}
+                  onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "" }))}
                   onFocus={refreshCondicionesPago}
                   disabled={isBusy}
                   className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
@@ -703,11 +828,13 @@ export default function CrearCotizacionPage() {
                   value={form.formaspagoId}
                   onChange={handleChange}
                   onFocus={refreshFormasPago}
-                  disabled={isBusy}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                  disabled={isBusy || !form.condicionPago}
+                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
                 >
-                  <option value="">Seleccionar...</option>
-                  {formasPago.map((fp: any) => (
+                  <option value="">
+                    {!form.condicionPago ? "Seleccione primero condición de pago" : "Seleccionar..."}
+                  </option>
+                  {formasPagoFiltradas.map((fp: any) => (
                     <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
                       {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
                     </option>
@@ -827,7 +954,34 @@ export default function CrearCotizacionPage() {
 
       {/* ══ Detalle de Ítems ══ */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mt-6">
-        <SectionHeader icon={<IconListDetails size={16} />} title="Detalle de Ítems" />
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-5 bg-blue-600 rounded" />
+            <span className="text-blue-600"><IconListDetails size={16} /></span>
+            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Detalle de Ítems</h3>
+          </div>
+          {listasPrecios.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Lista de Precios:</span>
+              <select
+                value={selectedListaId}
+                disabled={isBusy}
+                onChange={(e) => {
+                  setSelectedListaId(e.target.value);
+                  setNuevoDetalle(emptyDetalle());
+                  setPresentacionesNuevo([]);
+                }}
+                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
+              >
+                {listasPrecios.map((lp) => (
+                  <option key={lp.listaprecioId} value={lp.listaprecioId}>
+                    {lp.descripcion || lp.codigo_lista}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -933,11 +1087,20 @@ export default function CrearCotizacionPage() {
                 <td className="p-1.5 min-w-[140px]">
                   <SearchableSelect
                     name="nuevo_presentacionId"
-                    options={presentacionesNuevo}
+                    options={presentacionOptsNuevo}
                     value={nuevoDetalle.presentacionId ?? ""}
                     disabled={isBusy || loadingPres || !nuevoDetalle.bienId}
                     placeholder={loadingPres ? "Cargando..." : "-- Presentación --"}
-                    onChange={(e: any) => setNuevoDetalle((prev) => ({ ...prev, presentacionId: e.target.value }))}
+                    onChange={(e: any) => {
+                      const presentacionId = e.target.value;
+                      const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
+                      const precioAuto = det ? calcPrecioTier(det, nuevoDetalle.cantidad ?? 1).precio : 0;
+                      setNuevoDetalle((prev) => ({
+                        ...prev,
+                        presentacionId,
+                        ...(precioAuto > 0 ? { precio: precioAuto } : {}),
+                      }));
+                    }}
                   />
                 </td>
                 <td className="p-1.5 w-24">
@@ -945,7 +1108,20 @@ export default function CrearCotizacionPage() {
                     type="number" min="0.001" step="0.001"
                     value={nuevoDetalle.cantidad ?? ""}
                     disabled={isBusy}
-                    onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, cantidad: Number(e.target.value) }))}
+                    onChange={(e) => {
+                      const cantidad = Number(e.target.value);
+                      setNuevoDetalle((prev) => {
+                        const det = prev.presentacionId
+                          ? listaPrecioDetalles.find((d) => d.presentacionId === prev.presentacionId)
+                          : undefined;
+                        const precioAuto = det ? calcPrecioTier(det, cantidad).precio : 0;
+                        return {
+                          ...prev,
+                          cantidad,
+                          ...(det && precioAuto > 0 ? { precio: precioAuto } : {}),
+                        };
+                      });
+                    }}
                     className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                   />
                 </td>

@@ -564,9 +564,10 @@ export default function ClienteFormModal({
     clienteService.ubigeo.getDistritos(ubigeoState.selectedProvincia).then(setDistritosOptions).catch(console.error);
   }, [isOpen, clienteToEdit, ubigeoState.selectedProvincia]);
 
-  const isEdit     = Boolean(clienteToEdit?.clienteId);
-  const isReadOnly = clienteToEdit?.estado === false;
-  const isDNI      = getSearchTypeByDoc(form.docidentId) === "DNI";
+  const isEdit           = Boolean(clienteToEdit?.clienteId);
+  const isReadOnly       = clienteToEdit?.estado === false;
+  const isDNI            = getSearchTypeByDoc(form.docidentId) === "DNI";
+  const isPersonaJuridica = getSearchTypeByDoc(form.docidentId) === "RUC";
 
   // Badge tab 2
   const tab2Badge =
@@ -931,24 +932,30 @@ export default function ClienteFormModal({
                       options={normalizeOptions(catalogs?.tipo_cliente as any)}
                       value={form.tipoclienteId} onChange={handleChange("tipoclienteId")}
                       disabled={isReadOnly} placeholder="Seleccionar..." />
-                    <SearchableSelect label="Sexo" name="sexo"
-                      options={[{ key: "M", value: "Masculino" }, { key: "F", value: "Femenino" }]}
-                      value={form.sexo} onChange={handleChange("sexo")}
-                      disabled={isReadOnly} placeholder="Seleccionar..." />
-                    <DateInput
-                      label="Fecha de Nacimiento"
-                      name="fecha_nac"
-                      value={form.fecha_nac}
-                      onChange={handleChange("fecha_nac") as any}
-                      disabled={isReadOnly}
-                    />
-                    <SearchableSelect label="Estado Civil" name="estado_civil"
-                      options={[
-                        { key: "SOLTERO", value: "Soltero" }, { key: "CASADO", value: "Casado" },
-                        { key: "VIUDO", value: "Viudo" },     { key: "DIVORCIADO", value: "Divorciado" },
-                      ]}
-                      value={form.estado_civil} onChange={handleChange("estado_civil")}
-                      disabled={isReadOnly} placeholder="Seleccionar..." />
+                    {!isPersonaJuridica && (
+                      <SearchableSelect label="Sexo" name="sexo"
+                        options={[{ key: "M", value: "Masculino" }, { key: "F", value: "Femenino" }]}
+                        value={form.sexo} onChange={handleChange("sexo")}
+                        disabled={isReadOnly} placeholder="Seleccionar..." />
+                    )}
+                    {!isPersonaJuridica && (
+                      <DateInput
+                        label="Fecha de Nacimiento"
+                        name="fecha_nac"
+                        value={form.fecha_nac}
+                        onChange={handleChange("fecha_nac") as any}
+                        disabled={isReadOnly}
+                      />
+                    )}
+                    {!isPersonaJuridica && (
+                      <SearchableSelect label="Estado Civil" name="estado_civil"
+                        options={[
+                          { key: "SOLTERO", value: "Soltero" }, { key: "CASADO", value: "Casado" },
+                          { key: "VIUDO", value: "Viudo" },     { key: "DIVORCIADO", value: "Divorciado" },
+                        ]}
+                        value={form.estado_civil} onChange={handleChange("estado_civil")}
+                        disabled={isReadOnly} placeholder="Seleccionar..." />
+                    )}
                   </div>
                 </div>
 

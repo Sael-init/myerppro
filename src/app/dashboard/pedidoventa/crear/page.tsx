@@ -21,6 +21,7 @@ import monedaService         from "@/services/monedaService";
 import { guiaRemisionService } from "@/services/guiaRemisionService";
 import listaPreciosService from "@/services/listaprecioService";
 import { presentacionService } from "@/services/presentacionService";
+import cuentaUsuarioService from "@/services/cuentausuarioService";
 import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types";
 import StockDisponible from "@/components/shared/StockDisponible";
 
@@ -69,6 +70,7 @@ import {
   IconMapPin,
   IconEdit,
   IconFileDescription,
+  IconRefresh,
 } from "@tabler/icons-react";
 
 const EMPRESA_ID        = "005";
@@ -540,18 +542,34 @@ export default function CrearPedidoVentaPage() {
 
   // ── Carga listas de precios disponibles ──────────────────────────────────
   useEffect(() => {
-    listaPreciosService
-      .getByEmpresa(EMPRESA_ID, 1, 100)
-      .then((res) => {
-        const disponibles = res.data.filter(
+    const load = async () => {
+      try {
+        const [resListas, resCuenta] = await Promise.all([
+          listaPreciosService.getByEmpresa(EMPRESA_ID, 1, 100),
+          cuentaUsuarioService.getById(CUENTA_USUARIO_ID).catch(() => null),
+        ]);
+        const userPerfilesId: string | null = (resCuenta as any)?.perfilesId ?? null;
+        let disponibles = resListas.data.filter(
           (lp) => (lp.estado_listprec ?? (lp as any).estado?.descripcion ?? "").toLowerCase() === "disponible"
         );
+        if (userPerfilesId) {
+          disponibles = disponibles.filter(
+            (lp) => lp.perfiles?.some((p) => p.perfilesId === userPerfilesId) ?? false
+          );
+        }
+        const seen = new Set<string>();
+        disponibles = disponibles.filter((lp) => {
+          if (seen.has(lp.listaprecioId)) return false;
+          seen.add(lp.listaprecioId);
+          return true;
+        });
         setListasPrecios(disponibles);
         if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === LISTA_PRECIO_ID)) {
           setSelectedListaId(disponibles[0].listaprecioId);
         }
-      })
-      .catch(() => {});
+      } catch {}
+    };
+    load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -756,6 +774,31 @@ export default function CrearPedidoVentaPage() {
     } catch { /* silencioso */ }
   }, []);
 
+  const formasPagoFiltradas = useMemo(() => {
+    if (!form.condicion_pago || formasPago.length === 0) return [];
+    const selectedCP = condicionesPago.find(
+      (cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === form.condicion_pago
+    ) as any;
+    if (!selectedCP) return formasPago;
+    const condDesc = (
+      (selectedCP.descripcion ?? selectedCP.condicion_pago ?? form.condicion_pago) as string
+    ).toUpperCase();
+    if (condDesc.includes("CRED")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
+      );
+    } else if (condDesc.includes("GRATU")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
+      );
+    } else {
+      return formasPago.filter((fp: any) => {
+        const fpCond = (fp.condicionPago ?? "").toUpperCase();
+        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
+      });
+    }
+  }, [form.condicion_pago, condicionesPago, formasPago]);
+
   // ── Helpers tipo entrega ───────────────────────────────────────────────────
   const tipoEntregaDesc = tiposEntrega
     .find((te) => String(te.id) === form.tipoentregaId)
@@ -912,6 +955,34 @@ export default function CrearPedidoVentaPage() {
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
+  const handleLimpiar = () => {
+    setForm({
+      clienteId:            "",
+      cliente_referencia:   "",
+      trabajadorId:         "",
+      monedaId:             "",
+      tipo_cambio:          "1",
+      formaspagoId:         "",
+      condicion_pago:       "",
+      tipoentregaId:        "",
+      almacenId:            "",
+      direccion_entrega:    "",
+      documento_referencia: "",
+      fecha_entrega:        "",
+      fecha_vencimiento:    "",
+      observacion:          "",
+      lugar_despacho:       "",
+      operaciongratuita:    "false",
+      tipoopegratuitaId:    "00",
+    });
+    setDetalles([]);
+    setNuevoDetalle(emptyNuevoDetalle());
+    setCotizacionventaId(undefined);
+    setClienteDireccion("");
+    setClienteDireccionesExtras([]);
+    setSelectedListaId(LISTA_PRECIO_ID);
+  };
+
   const handleSubmit = async () => {
     const err = validate();
     if (err) { toast.error(err); return; }
@@ -1018,6 +1089,15 @@ export default function CrearPedidoVentaPage() {
           >
             <IconFileDescription size={17} />
             Importar Cotización
+          </button>
+          <button
+            type="button"
+            onClick={handleLimpiar}
+            disabled={saving || isBusy}
+            className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-2"
+          >
+            <IconRefresh size={17} />
+            Limpiar
           </button>
           <button
             onClick={handleSubmit}
@@ -1182,7 +1262,7 @@ export default function CrearPedidoVentaPage() {
               <select
                 name="condicion_pago"
                 value={form.condicion_pago}
-                onChange={handleChange}
+                onChange={(e) => setForm((prev) => ({ ...prev, condicion_pago: e.target.value, formaspagoId: "" }))}
                 onFocus={refreshCondicionesPago}
                 disabled={isBusy}
                 className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
@@ -1202,11 +1282,13 @@ export default function CrearPedidoVentaPage() {
                 value={form.formaspagoId}
                 onChange={handleChange}
                 onFocus={refreshFormasPago}
-                disabled={isBusy}
-                className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                disabled={isBusy || !form.condicion_pago}
+                className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
               >
-                <option value="">Seleccionar...</option>
-                {formasPago.map((fp: any) => (
+                <option value="">
+                  {!form.condicion_pago ? "Seleccione primero condición de pago" : "Seleccionar..."}
+                </option>
+                {formasPagoFiltradas.map((fp: any) => (
                   <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
                     {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
                   </option>

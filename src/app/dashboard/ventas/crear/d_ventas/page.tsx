@@ -16,6 +16,7 @@ import tipoOpeGratuitaService from "@/services/tipoopegratuitaService";
 import monedaService from "@/services/monedaService";
 import listaPreciosService from "@/services/listaprecioService";
 import { presentacionService } from "@/services/presentacionService";
+import cuentaUsuarioService from "@/services/cuentausuarioService";
 import DateInput from "@/components/forms/DateInput";
 import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types";
 import StockDisponible from "@/components/shared/StockDisponible";
@@ -67,9 +68,10 @@ import {
 // Constantes
 // ─────────────────────────────────────────────────────────────────────────────
 
-const IGV_PORCENTAJE = 0.18;
-const EMPRESA_ID     = "005";
-const TENANT_ID      = "1";
+const IGV_PORCENTAJE    = 0.18;
+const EMPRESA_ID        = "005";
+const TENANT_ID         = "1";
+const CUENTA_USUARIO_ID = "CU0002";
 
 const TIPO_SOLO_RUC = ["X028"];
 const TIPO_SOLO_DNI = ["X007", "X077"];
@@ -636,20 +638,30 @@ function CrearDocumentoVentaContent() {
 
   // ── Carga listas de precios disponibles ──────────────────────────────────
   useEffect(() => {
-    listaPreciosService
-      .getByEmpresa(EMPRESA_ID, 1, 100)
-      .then((res) => {
-        const disponibles = res.data.filter((lp: any) => {
+    const load = async () => {
+      try {
+        const [resListas, resCuenta] = await Promise.all([
+          listaPreciosService.getByEmpresa(EMPRESA_ID, 1, 100),
+          cuentaUsuarioService.getById(CUENTA_USUARIO_ID).catch(() => null),
+        ]);
+        const userPerfilesId: string | null = (resCuenta as any)?.perfilesId ?? null;
+        let disponibles = resListas.data.filter((lp: any) => {
           const desc = (lp.estado?.descripcion ?? "").toLowerCase().trim();
           const code = (lp.estado_listprec ?? "").toLowerCase().trim();
           return desc !== "anulado" && code !== "anulado";
         });
+        if (userPerfilesId) {
+          disponibles = disponibles.filter(
+            (lp) => lp.perfiles?.some((p) => p.perfilesId === userPerfilesId) ?? false
+          );
+        }
         setListasPrecios(disponibles);
         if (disponibles.length > 0 && !disponibles.find((lp) => lp.listaprecioId === selectedListaId)) {
           setSelectedListaId(disponibles[0].listaprecioId);
         }
-      })
-      .catch(() => {});
+      } catch {}
+    };
+    load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -700,6 +712,31 @@ function CrearDocumentoVentaContent() {
     () => formasPago.find((f: any) => (f.formaspagoId ?? "") === ((formData as any).tipopagoId ?? "")),
     [formasPago, (formData as any).tipopagoId]
   );
+
+  const formasPagoFiltradas = useMemo(() => {
+    if (!(formData as any).condicionPago || formasPago.length === 0) return [];
+    const selectedCP = condicionesPago.find(
+      (cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === (formData as any).condicionPago
+    ) as any;
+    if (!selectedCP) return formasPago;
+    const condDesc = (
+      (selectedCP.descripcion ?? selectedCP.condicion_pago ?? (formData as any).condicionPago) as string
+    ).toUpperCase();
+    if (condDesc.includes("CRED")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
+      );
+    } else if (condDesc.includes("GRATU")) {
+      return formasPago.filter((fp: any) =>
+        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
+      );
+    } else {
+      return formasPago.filter((fp: any) => {
+        const fpCond = (fp.condicionPago ?? "").toUpperCase();
+        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
+      });
+    }
+  }, [(formData as any).condicionPago, condicionesPago, formasPago]);
 
   const isCondicionCredito = useMemo(() => {
     if (!(formData as any).condicionPago) return false;
@@ -1445,10 +1482,16 @@ function CrearDocumentoVentaContent() {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Forma de Pago</label>
-                <select value={(formData as any).tipopagoId ?? ""} onChange={(e) => updateField("tipopagoId", e.target.value)}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
-                  <option value="">Seleccione...</option>
-                  {formasPago.map((fp: any) => (
+                <select
+                  value={(formData as any).tipopagoId ?? ""}
+                  onChange={(e) => updateField("tipopagoId", e.target.value)}
+                  disabled={!(formData as any).condicionPago}
+                  className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {!(formData as any).condicionPago ? "Seleccione primero condición de pago" : "Seleccione..."}
+                  </option>
+                  {formasPagoFiltradas.map((fp: any) => (
                     <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
                       {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
                     </option>

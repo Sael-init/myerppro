@@ -10,6 +10,8 @@ import { utils as xlsxUtils, writeFile as xlsxWriteFile, read as xlsxRead } from
 import listaPreciosService from "@/services/listaprecioService";
 import { presentacionService } from "@/services/presentacionService";
 import { productoService } from "@/services/productoService";
+import monedaService from "@/services/monedaService";
+import type { Moneda } from "@/types/moneda.types";
 
 import type { TipoListaPrecio, ListaPrecioDetalleDTO } from "@/types/listaprecio.types";
 import type { Producto } from "@/types/producto.types";
@@ -307,6 +309,7 @@ export default function CrearListaPrecioPage() {
   const [loadingEdit, setLoadingEdit] = useState(false);
 
   const [tipos,       setTipos]       = useState<TipoListaPrecio[]>([]);
+  const [monedas,     setMonedas]     = useState<Moneda[]>([]);
   const [showAddTipo, setShowAddTipo] = useState(false);
   const [newTipoDesc, setNewTipoDesc] = useState("");
   const [savingTipo,  setSavingTipo]  = useState(false);
@@ -314,7 +317,7 @@ export default function CrearListaPrecioPage() {
   const [presDisponibles, setPresDisponibles] = useState<{ key: string; value: string; factor: number }[]>([]);
   const [loadingPres,     setLoadingPres]     = useState(false);
   const [cargarTodas,     setCargarTodas]     = useState(false);
-  const [costoRefLocked,  setCostoRefLocked]  = useState(false);
+  const [totalProductos,  setTotalProductos]  = useState<number | null>(null);
 
   // ── Importación Excel ───────────────────────────────────────────────────────
   const [metodoCarga,  setMetodoCarga]  = useState<"individual" | "excel">("individual");
@@ -330,6 +333,7 @@ export default function CrearListaPrecioPage() {
     fecha_inicio:      "",
     fecha_vencimiento: "",
     listadefault:      false,
+    monedaId:          "",
   });
 
   const [detalles,     setDetalles]     = useState<DetalleRow[]>([]);
@@ -341,8 +345,14 @@ export default function CrearListaPrecioPage() {
     const loadAll = async () => {
       setLoadingCat(true);
       try {
-        const resTipos = await listaPreciosService.getTiposByEmpresa(EMPRESA_ID);
+        const [resTipos, resMonedas, resProds] = await Promise.all([
+          listaPreciosService.getTiposByEmpresa(EMPRESA_ID),
+          monedaService.getAll(1, 100),
+          productoService.getByEmpresa(EMPRESA_ID, 1, 1),
+        ]);
         setTipos(resTipos);
+        setMonedas(resMonedas.data);
+        setTotalProductos(resProds?.meta?.totalRecords ?? null);
       } catch {
         toast.error("No se pudieron cargar los catálogos");
       } finally {
@@ -366,6 +376,7 @@ export default function CrearListaPrecioPage() {
           fecha_inicio:      res.fecha_inicio      ? res.fecha_inicio.substring(0, 10)      : "",
           fecha_vencimiento: res.fecha_vencimiento ? res.fecha_vencimiento.substring(0, 10) : "",
           listadefault:      res.listadefault      ?? false,
+          monedaId:          res.monedaId          ?? "",
         });
         setDetalles(
           (res.detalles ?? []).map((d: any) => ({
@@ -395,9 +406,8 @@ export default function CrearListaPrecioPage() {
   // ── Presentaciones al cambiar producto ────────────────────────────────────
   useEffect(() => {
     const bienId = nuevoDetalle.bienId;
-    if (!bienId) { setPresDisponibles([]); setCostoRefLocked(false); return; }
+    if (!bienId) { setPresDisponibles([]); return; }
     setLoadingPres(true);
-    setCostoRefLocked(false);
     presentacionService
       .getByBien(bienId, true)
       .then((res: any) => {
@@ -415,12 +425,11 @@ export default function CrearListaPrecioPage() {
   // ── Referencia de precios al seleccionar presentación ─────────────────────
   useEffect(() => {
     const { presentacionId, bienId } = nuevoDetalle;
-    if (!presentacionId || !bienId) { setCostoRefLocked(false); return; }
+    if (!presentacionId || !bienId) return;
 
     listaPreciosService
       .getAll(EMPRESA_ID, 1, 200)
       .then((res) => {
-        let found = false;
         for (const lista of res.data) {
           if (!Array.isArray(lista.detalles)) continue;
           const match = lista.detalles.find(
@@ -432,23 +441,14 @@ export default function CrearListaPrecioPage() {
           if (match) {
             setNuevoDetalle((p) => ({
               ...p,
-              costoValorizado:            String(match.costoValorizado            ?? ""),
-              utilidad:                   String(match.utilidad                   ?? ""),
-              cantidad_minorista:         match.cantidad_minorista         != null ? String(match.cantidad_minorista)         : p.cantidad_minorista,
-              precio_minimo_minorista:    match.precio_minimo_minorista    != null ? String(match.precio_minimo_minorista)    : p.precio_minimo_minorista,
-              cantidad_mayorista:         match.cantidad_mayorista         != null ? String(match.cantidad_mayorista)         : p.cantidad_mayorista,
-              precio_minimo_mayorista:    match.precio_minimo_mayorista    != null ? String(match.precio_minimo_mayorista)    : p.precio_minimo_mayorista,
-              cantidad_distribuidor:      match.cantidad_distribuidor      != null ? String(match.cantidad_distribuidor)      : p.cantidad_distribuidor,
-              precio_minimo_distribuidor: match.precio_minimo_distribuidor != null ? String(match.precio_minimo_distribuidor) : p.precio_minimo_distribuidor,
+              costoValorizado: String(match.costoValorizado ?? ""),
+              utilidad:        String(match.utilidad        ?? ""),
             }));
-            setCostoRefLocked(true);
-            found = true;
             break;
           }
         }
-        if (!found) setCostoRefLocked(false);
       })
-      .catch(() => setCostoRefLocked(false));
+      .catch(() => {});
   }, [nuevoDetalle.presentacionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Listas derivadas ────────────────────────────────────────────────────────
@@ -477,20 +477,11 @@ export default function CrearListaPrecioPage() {
     setNuevoDetalle(emptyNuevo());
     setPresDisponibles([]);
     setEditIndex(null);
-    setCostoRefLocked(false);
   };
 
   // ── Agregar detalle ────────────────────────────────────────────────────────
   const handleAgregarDetalle = () => {
     if (!nuevoDetalle.presentacionId) return toast.error("Seleccione la presentación");
-
-    const costo    = Number(nuevoDetalle.costoValorizado);
-    const utilidad = Number(nuevoDetalle.utilidad);
-
-    if (!nuevoDetalle.costoValorizado || isNaN(costo) || costo <= 0)
-      return toast.error("El costo valorizado es obligatorio y debe ser mayor a 0");
-    if (!nuevoDetalle.utilidad || isNaN(utilidad) || utilidad < 0)
-      return toast.error("La utilidad es obligatoria y no puede ser negativa");
 
     // ── Modo "Cargar Todas": inserta todas las presentaciones del producto ──
     if (cargarTodas) {
@@ -510,9 +501,13 @@ export default function CrearListaPrecioPage() {
       const cantDis   = Number(nuevoDetalle.cantidad_distribuidor)      || 0;
 
       const nuevasFilas: DetalleRow[] = presDisponibles.map((pres) => {
-        const f      = pres.factor ?? 1;
-        const escala = factorRef > 0 ? f / factorRef : 1;
-        const scale  = (ref: number) => ref > 0 ? Math.round(ref * escala * 100) / 100 : undefined;
+        const f       = pres.factor ?? 1;
+        // precio: escala hacia abajo cuando la presentación es más pequeña (f < factorRef)
+        const escalaP = factorRef > 0 ? f / factorRef : 1;
+        // cantidad: escala hacia arriba (inverso del precio) para mantener equivalencia
+        const escalaQ = f > 0 ? factorRef / f : 1;
+        const scaleP  = (ref: number) => ref > 0 ? Math.round(ref * escalaP * 100) / 100 : undefined;
+        const scaleQ  = (ref: number) => ref > 0 ? Math.round(ref * escalaQ * 100) / 100 : undefined;
 
         const esSeleccionada = pres.key === nuevoDetalle.presentacionId;
 
@@ -537,12 +532,12 @@ export default function CrearListaPrecioPage() {
           presentacionId:             pres.key,
           costoValorizado:            toNum(nuevoDetalle.costoValorizado),
           utilidad:                   toNum(nuevoDetalle.utilidad),
-          cantidad_minorista:         cantMin,
-          precio_minimo_minorista:    scale(pMin),
-          cantidad_mayorista:         cantMay > 0 ? cantMay : undefined,
-          precio_minimo_mayorista:    scale(pMayRef),
-          cantidad_distribuidor:      cantDis > 0 ? cantDis : undefined,
-          precio_minimo_distribuidor: scale(pDisRef),
+          cantidad_minorista:         scaleQ(cantMin),
+          precio_minimo_minorista:    scaleP(pMin),
+          cantidad_mayorista:         cantMay > 0 ? scaleQ(cantMay) : undefined,
+          precio_minimo_mayorista:    scaleP(pMayRef),
+          cantidad_distribuidor:      cantDis > 0 ? scaleQ(cantDis) : undefined,
+          precio_minimo_distribuidor: scaleP(pDisRef),
           _bienId:    nuevoDetalle.bienId,
           _bienLabel: nuevoDetalle._bienLabel ?? nuevoDetalle.bienId,
           _presLabel: pres.value,
@@ -820,6 +815,7 @@ export default function CrearListaPrecioPage() {
           fecha_inicio:      form.fecha_inicio      || undefined,
           fecha_vencimiento: form.fecha_vencimiento || undefined,
           listadefault:      form.listadefault,
+          monedaId:          form.monedaId          || null,
           detalles:          detallesPayload,
         });
         toast.success("Lista de precios actualizada correctamente");
@@ -832,6 +828,7 @@ export default function CrearListaPrecioPage() {
           fecha_inicio:      form.fecha_inicio      || undefined,
           fecha_vencimiento: form.fecha_vencimiento || undefined,
           listadefault:      form.listadefault,
+          monedaId:          form.monedaId          || null,
           detalles:          detallesPayload,
         });
         toast.success(`Lista de precios creada: ${res.listaprecioId}`);
@@ -986,6 +983,22 @@ export default function CrearListaPrecioPage() {
               onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
             />
 
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Moneda</FieldLabel>
+              <select
+                className={inputCls}
+                value={form.monedaId}
+                onChange={(e) => setForm({ ...form, monedaId: e.target.value })}
+              >
+                <option value="">— Seleccionar moneda —</option>
+                {monedas.map((m) => (
+                  <option key={m.monedaId} value={m.monedaId}>
+                    {m.simbolomoneda} — {m.descripcion} ({m.abreviatura})
+                  </option>
+                ))}
+              </select>
+            </div>
+
           </div>
         </div>
 
@@ -1005,6 +1018,32 @@ export default function CrearListaPrecioPage() {
                   </span>
                 )}
               </span>
+              {totalProductos !== null && (() => {
+                const cargados   = new Set(detalles.map((d) => d._bienId).filter(Boolean)).size;
+                const restantes  = totalProductos - cargados;
+                const porcentaje = totalProductos > 0 ? Math.round((cargados / totalProductos) * 100) : 0;
+                return (
+                  <div className="flex items-center gap-1.5 ml-2 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-[10px] font-bold text-slate-500">
+                    <span className="text-blue-600">{cargados}</span>
+                    <span>/</span>
+                    <span>{totalProductos}</span>
+                    <span className="text-slate-400 font-normal">productos</span>
+                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                      restantes === 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                    }`}>
+                      {restantes === 0 ? "Completo" : `${restantes} restantes`}
+                    </span>
+                    {porcentaje > 0 && (
+                      <div className="w-12 h-1.5 bg-slate-200 rounded-full overflow-hidden ml-1">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <button
               type="button"
@@ -1066,26 +1105,22 @@ export default function CrearListaPrecioPage() {
 
                 {/* Cos — flex-[3] = 30% de producto */}
                 <div className="flex-[3] min-w-0 flex flex-col gap-0.5">
-                  <span className="text-[9px] font-bold uppercase text-slate-400 flex items-center gap-0.5">
-                    Cos. {costoRefLocked && <span className="text-emerald-500">●</span>}
-                  </span>
+                  <span className="text-[9px] font-bold uppercase text-slate-400">Cos.</span>
                   <input type="number" min="0" step="0.01" placeholder="0.00"
-                    disabled={costoRefLocked}
-                    className={"w-full border rounded px-1.5 py-1 text-xs text-right outline-none focus:ring-1 focus:ring-blue-400/40 focus:border-blue-400 transition-all " + (costoRefLocked ? "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-inner cursor-not-allowed font-semibold" : "border-slate-200 bg-white")}
+                    disabled
+                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-right bg-slate-50 text-slate-400 cursor-not-allowed"
                     value={nuevoDetalle.costoValorizado}
-                    onChange={(e) => setNuevoDetalle((p) => ({ ...p, costoValorizado: e.target.value }))} />
+                    readOnly />
                 </div>
 
                 {/* Utl — flex-[3] */}
                 <div className="flex-[3] min-w-0 flex flex-col gap-0.5">
-                  <span className="text-[9px] font-bold uppercase text-slate-400 flex items-center gap-0.5">
-                    Utl. {costoRefLocked && <span className="text-emerald-500">●</span>}
-                  </span>
+                  <span className="text-[9px] font-bold uppercase text-slate-400">Utl.</span>
                   <input type="number" min="0" step="0.01" placeholder="0"
-                    disabled={costoRefLocked}
-                    className={"w-full border rounded px-1.5 py-1 text-xs text-right outline-none focus:ring-1 focus:ring-blue-400/40 focus:border-blue-400 transition-all " + (costoRefLocked ? "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-inner cursor-not-allowed font-semibold" : "border-slate-200 bg-white")}
+                    disabled
+                    className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs text-right bg-slate-50 text-slate-400 cursor-not-allowed"
                     value={nuevoDetalle.utilidad}
-                    onChange={(e) => setNuevoDetalle((p) => ({ ...p, utilidad: e.target.value }))} />
+                    readOnly />
                 </div>
 
                 {/* Separador */}

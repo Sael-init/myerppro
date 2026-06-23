@@ -187,18 +187,21 @@ class DocumentoVentaService {
         jsonMiFact:  payload.jsonMiFact  ?? undefined,
       };
     } catch (err: any) {
-      const apiMessage =
-        err.response?.data?.message   ??
-        err.response?.data?.error      ??
-        err.response?.data?.title      ??
-        (typeof err.response?.data === 'string' ? err.response.data : null);
+      const data = err.response?.data;
 
-      console.error('[DocumentoVentaService.create] Error al llamar al API:', {
-        status:   err.response?.status,
-        data:     err.response?.data,
-        message:  apiMessage,
-        enviarSunat,
-      });
+      // Extraer errores de campo específicos de ASP.NET ValidationProblemDetails
+      const fieldErrors = data?.errors
+        ? Object.entries(data.errors as Record<string, string[]>)
+            .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+            .join(' | ')
+        : null;
+
+      const apiMessage =
+        fieldErrors          ??
+        data?.message        ??
+        data?.error          ??
+        data?.title          ??
+        (typeof data === 'string' ? data : null);
 
       throw new Error(
         apiMessage ??

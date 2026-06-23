@@ -3,29 +3,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  IconPackage,
   IconUsers,
+  IconUserCog,
   IconTruck,
+  IconCreditCard,
+  IconCalendarTime,
+  IconFileInvoice,
+  IconShoppingCart,
+  IconFileText,
+  IconTag,
+  IconReceiptRefund,
   IconChartBar,
 } from "@tabler/icons-react";
 
 const Sidebar = () => {
-  const pathname = usePathname(); // Hook para saber la ruta actual
+  const pathname = usePathname();
 
-  // IMPORTANTE: He actualizado los 'path' para que coincidan con tu carpeta 'app/dashboard'
   const menuItems = [
-    { title: 'Clientes', icon: <IconPackage size={20} />, path: '/dashboard/clientes' },
-    { title: 'Trabajadores', icon: <IconUsers size={20} />, path: '/dashboard/trabajadores' },
+    { title: 'Clientes', icon: <IconUsers size={20} />, path: '/dashboard/clientes' },
+    { title: 'Trabajadores', icon: <IconUserCog size={20} />, path: '/dashboard/trabajadores' },
     { title: 'Proveedores', icon: <IconTruck size={20} />, path: '/dashboard/proveedores' },
-    { title: 'Formas de Pago', icon: <IconTruck size={20} />, path: '/dashboard/formaspago' },
-    { title: 'Condiciones de Pago', icon: <IconTruck size={20} />, path: '/dashboard/condicionpago' },
-    { title: 'Documentos Venta', icon: <IconTruck size={20} />, path: '/dashboard/ventas' },
-    { title: 'Pedidos de Venta', icon: <IconTruck size={20} />, path: '/dashboard/pedidoventa' },
-    { title: 'Cotizaciones', icon: <IconTruck size={20} />, path: '/dashboard/cotizaciones' },
-    { title: 'Lista de Precios', icon: <IconTruck size={20} />, path: '/dashboard/lista_precios' },
-    { title: 'Notas de Crédito', icon: <IconTruck size={20} />, path: '/dashboard/notacredito' },
+    { title: 'Formas de Pago', icon: <IconCreditCard size={20} />, path: '/dashboard/formaspago' },
+    { title: 'Condiciones de Pago', icon: <IconCalendarTime size={20} />, path: '/dashboard/condicionpago' },
+    { title: 'Documentos Venta', icon: <IconFileInvoice size={20} />, path: '/dashboard/ventas' },
+    { title: 'Pedidos de Venta', icon: <IconShoppingCart size={20} />, path: '/dashboard/pedidoventa' },
+    { title: 'Cotizaciones', icon: <IconFileText size={20} />, path: '/dashboard/cotizaciones' },
+    { title: 'Lista de Precios', icon: <IconTag size={20} />, path: '/dashboard/lista_precios' },
+    { title: 'Notas de Crédito', icon: <IconReceiptRefund size={20} />, path: '/dashboard/notacredito' },
     { title: 'Reportes Ventas', icon: <IconChartBar size={20} />, path: '/dashboard/reportesventas' },
-   ];
+  ];
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col hidden md:flex">

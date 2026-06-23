@@ -444,7 +444,7 @@ export default function ListaPreciosPage() {
               row={row}
               onView={() => { setViewId(row.listaprecioId); setShowViewModal(true); }}
               onPrint={() => handlePrint(row)}
-              onEdit={registrado ? () => router.push(`/dashboard/lista_precios/crear?edit=${row.listaprecioId}`) : undefined}
+              onEdit={!anulado ? () => router.push(`/dashboard/lista_precios/crear?edit=${row.listaprecioId}`) : undefined}
               onAsignar={!anulado ? () => { setAsignarRow(row); setAsignarOpen(true); } : undefined}
               onActivar={!activo && !anulado && !vencida ? () => openConfirm("toggleEstado", row) : undefined}
               onDesactivar={activo ? () => openConfirm("toggleEstado", row) : undefined}
