@@ -163,6 +163,7 @@ export default function DocumentoVentaViewModal({
     }
   }, [isOpen, documentoventaId, onClose]);
 
+
   // ── Helpers ─────────────────────────────────────────
   const formatearFecha = (fecha?: string) => {
     if (!fecha) return "-";
@@ -201,6 +202,15 @@ export default function DocumentoVentaViewModal({
     if (currency === "USD") return "US$";
     if (currency === "EUR") return "€";
     return "S/";
+  })();
+
+  const isNotaCredito = !!(documento?.motivoelectronicoId?.trim());
+
+  const motivoConcepto = (() => {
+    if (!documento?.motivoelectronicoId) return null;
+    const id = documento.motivoelectronicoId.trim();
+    const concepto = documento.motivoNcNd?.concepto;
+    return concepto ? `${id} – ${concepto}` : id;
   })();
 
   // =====================================================
@@ -337,6 +347,14 @@ export default function DocumentoVentaViewModal({
                   label="Orden de Compra"
                   value={documento.ordencompra_numero}
                   mono
+                />
+              )}
+              {motivoConcepto && (
+                <InfoField
+                  label="Motivo Nota Crédito"
+                  value={motivoConcepto}
+                  highlight
+                  fullWidth
                 />
               )}
             </dl>
@@ -479,6 +497,11 @@ export default function DocumentoVentaViewModal({
                       <th className="px-3 py-2.5 text-center font-bold text-slate-600">
                         Cant.
                       </th>
+                      {isNotaCredito && (
+                        <th className="px-3 py-2.5 text-center font-bold text-slate-600 whitespace-nowrap">
+                          Cant. pendiente nota entrada
+                        </th>
+                      )}
                       <th className="px-3 py-2.5 text-center font-bold text-slate-600">
                         Saldo
                       </th>
@@ -525,6 +548,13 @@ export default function DocumentoVentaViewModal({
                         <td className="px-3 py-2 text-center font-mono">
                           {detalle.cantidad?.toFixed(2)}
                         </td>
+                        {isNotaCredito && (
+                          <td className="px-3 py-2 text-center font-mono">
+                            {detalle.saldoTemporal != null
+                              ? Number(detalle.saldoTemporal).toFixed(2)
+                              : "-"}
+                          </td>
+                        )}
                         <td className="px-3 py-2 text-center font-mono">
                           {(detalle as any).saldoCantidad != null
                             ? Number((detalle as any).saldoCantidad).toFixed(2)
@@ -565,7 +595,7 @@ export default function DocumentoVentaViewModal({
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={isNotaCredito ? 9 : 8}
                         className="px-3 py-2.5 text-right font-bold text-slate-600 text-xs uppercase"
                       >
                         Total:

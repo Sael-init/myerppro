@@ -153,6 +153,7 @@ export interface DocumentoVenta {
   cuentaUsuario?: CuentaUsuario;
   puntoVenta?: PuntoVenta;
   sede?: Sede;
+  motivoNcNd?: { tipoDocumento: string; concepto: string };
   detalles?: DocumentoVentaDetalle[];
 }
 
