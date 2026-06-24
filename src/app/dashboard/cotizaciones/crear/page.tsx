@@ -14,7 +14,7 @@ import cotizacionService     from "@/services/cotizacionService";
 import trabajadorService     from "@/services/trabajadorService";
 import condicionPagoService  from "@/services/condicionpagoService";
 import formasPagoService     from "@/services/formaspagoService";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import clienteService        from "@/services/clienteService";
 import monedaService         from "@/services/monedaService";
 import { presentacionService } from "@/services/presentacionService";

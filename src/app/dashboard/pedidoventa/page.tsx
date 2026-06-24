@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import pedidoventaService from "@/services/pedidoventaService";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import { imprimirPedidoVenta } from "@/utils/printPedidoVenta";
 import type { KeyValueOption } from "@/types/Documentoventa.types";
 import Modal from "@/components/ui/Modal";

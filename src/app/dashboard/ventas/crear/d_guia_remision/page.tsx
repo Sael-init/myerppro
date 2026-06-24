@@ -27,7 +27,7 @@ import { useCrearStore } from "../store";
 import DateInput from "@/components/forms/DateInput";
 import clienteService from "@/services/clienteService";
 import { guiaRemisionService } from "@/services/guiaRemisionService";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import type { GuiaRemisionPayload, GuiaRemisionDetalle } from "@/types/guiaRemision.types";
 import type { FormDropdownsDocumentoVenta } from "@/types/Documentoventa.types";
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import cotizacionService from "@/services/cotizacionService";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import Modal from "@/components/ui/Modal";
 import type { Cotizacion, FiltrosCotizacion } from "@/types/cotizacion.types";
 import DataTable from "@/components/shared/DataTable";

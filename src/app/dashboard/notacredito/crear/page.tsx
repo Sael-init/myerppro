@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } fr
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import condicionPagoService from "@/services/condicionpagoService";
 import formasPagoService from "@/services/formaspagoService";
 import trabajadorService from "@/services/trabajadorService";
