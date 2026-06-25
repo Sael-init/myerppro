@@ -381,6 +381,21 @@ export default function ListaPreciosPage() {
       ),
     },
     {
+      header: "Moneda",
+      width:  "110px",
+      render: (row: ListaPrecio) => {
+        const m = (row as any).moneda;
+        if (m?.descripcion) {
+          return (
+            <span className="text-xs text-slate-700">
+              {m.descripcion}{m.abreviatura ? ` (${m.abreviatura})` : ""}
+            </span>
+          );
+        }
+        return <span className="text-xs text-slate-400">{row.monedaId ?? "—"}</span>;
+      },
+    },
+    {
       header: "Fecha Inicio",
       width:  "110px",
       render: (row: ListaPrecio) => (

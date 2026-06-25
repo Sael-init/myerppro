@@ -304,9 +304,8 @@ export default function CrearListaPrecioPage() {
   const editId       = searchParams.get("edit");
   const isEditing    = !!editId;
 
-  const [saving,      setSaving]      = useState(false);
-  const [loadingCat,  setLoadingCat]  = useState(true);
-  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [loadingCat, setLoadingCat] = useState(true);
 
   const [tipos,       setTipos]       = useState<TipoListaPrecio[]>([]);
   const [monedas,     setMonedas]     = useState<Moneda[]>([]);
@@ -342,66 +341,55 @@ export default function CrearListaPrecioPage() {
 
   // ── Carga catálogos ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const loadAll = async () => {
+    const load = async () => {
       setLoadingCat(true);
       try {
-        const [resTipos, resMonedas, resProds] = await Promise.all([
+        const [resTipos, resMonedas, resProds, editRes] = await Promise.all([
           listaPreciosService.getTiposByEmpresa(EMPRESA_ID),
           monedaService.getAll(1, 100),
           productoService.getByEmpresa(EMPRESA_ID, 1, 1),
+          editId ? listaPreciosService.getById(editId) : Promise.resolve(null),
         ]);
         setTipos(resTipos);
         setMonedas(resMonedas.data);
         setTotalProductos(resProds?.meta?.totalRecords ?? null);
-      } catch {
-        toast.error("No se pudieron cargar los catálogos");
+
+        if (editId && editRes) {
+          const res = editRes as any;
+          setForm({
+            codigo_lista:      res.codigo_lista     ?? "",
+            tipolistaprecioId: res.tipolistaprecioId != null ? String(res.tipolistaprecioId) : "",
+            descripcion:       res.descripcion      ?? "",
+            fecha_inicio:      res.fecha_inicio      ? res.fecha_inicio.substring(0, 10)      : "",
+            fecha_vencimiento: res.fecha_vencimiento ? res.fecha_vencimiento.substring(0, 10) : "",
+            listadefault:      res.listadefault      ?? false,
+            monedaId:          res.monedaId          ?? "",
+          });
+          setDetalles(
+            (res.detalles ?? []).map((d: any) => ({
+              presentacionId:             d.presentacionId             ?? "",
+              costoValorizado:            d.costoValorizado,
+              utilidad:                   d.utilidad,
+              cantidad_minorista:         d.cantidad_minorista,
+              precio_minimo_minorista:    d.precio_minimo_minorista,
+              cantidad_mayorista:         d.cantidad_mayorista,
+              precio_minimo_mayorista:    d.precio_minimo_mayorista,
+              cantidad_distribuidor:      d.cantidad_distribuidor,
+              precio_minimo_distribuidor: d.precio_minimo_distribuidor,
+              _bienId:    d.bien?.bienId ?? d.bienId ?? "",
+              _bienLabel: d.bien?.descripcion ?? "",
+              _presLabel: d.presentacion?.descripcion ?? d.presentacionId ?? "",
+            }))
+          );
+        }
+      } catch (err: any) {
+        toast.error(err?.message ?? "No se pudieron cargar los datos");
       } finally {
         setLoadingCat(false);
       }
     };
-    loadAll();
-  }, []);
-
-  // ── Carga datos de edición ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!editId) return;
-    const loadEdit = async () => {
-      setLoadingEdit(true);
-      try {
-        const res = await listaPreciosService.getById(editId);
-        setForm({
-          codigo_lista:      res.codigo_lista     ?? "",
-          tipolistaprecioId: res.tipolistaprecioId != null ? String(res.tipolistaprecioId) : "",
-          descripcion:       res.descripcion      ?? "",
-          fecha_inicio:      res.fecha_inicio      ? res.fecha_inicio.substring(0, 10)      : "",
-          fecha_vencimiento: res.fecha_vencimiento ? res.fecha_vencimiento.substring(0, 10) : "",
-          listadefault:      res.listadefault      ?? false,
-          monedaId:          res.monedaId          ?? "",
-        });
-        setDetalles(
-          (res.detalles ?? []).map((d: any) => ({
-            presentacionId:             d.presentacionId             ?? "",
-            costoValorizado:            d.costoValorizado,
-            utilidad:                   d.utilidad,
-            cantidad_minorista:         d.cantidad_minorista,
-            precio_minimo_minorista:    d.precio_minimo_minorista,
-            cantidad_mayorista:         d.cantidad_mayorista,
-            precio_minimo_mayorista:    d.precio_minimo_mayorista,
-            cantidad_distribuidor:      d.cantidad_distribuidor,
-            precio_minimo_distribuidor: d.precio_minimo_distribuidor,
-            _bienId:    d.bien?.bienId ?? d.bienId ?? "",
-            _bienLabel: d.bien?.descripcion ?? "",
-            _presLabel: d.presentacion?.descripcion ?? d.presentacionId ?? "",
-          }))
-        );
-      } catch (err: any) {
-        toast.error(err?.message ?? "No se pudo cargar la lista de precios para editar");
-      } finally {
-        setLoadingEdit(false);
-      }
-    };
-    loadEdit();
-  }, [editId]);
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Presentaciones al cambiar producto ────────────────────────────────────
   useEffect(() => {
@@ -507,7 +495,7 @@ export default function CrearListaPrecioPage() {
         // cantidad: escala hacia arriba (inverso del precio) para mantener equivalencia
         const escalaQ = f > 0 ? factorRef / f : 1;
         const scaleP  = (ref: number) => ref > 0 ? Math.round(ref * escalaP * 100) / 100 : undefined;
-        const scaleQ  = (ref: number) => ref > 0 ? Math.round(ref * escalaQ * 100) / 100 : undefined;
+        const scaleQ  = (ref: number) => ref > 0 ? Math.max(1, Math.round(ref * escalaQ * 100) / 100) : undefined;
 
         const esSeleccionada = pres.key === nuevoDetalle.presentacionId;
 
@@ -843,7 +831,7 @@ export default function CrearListaPrecioPage() {
   };
 
   // ── Loading inicial ─────────────────────────────────────────────────────────
-  if (loadingCat || loadingEdit) {
+  if (loadingCat) {
     return (
       <div className="flex items-center justify-center h-full gap-3 text-blue-600 p-12">
         <IconLoader size={28} className="animate-spin" />
