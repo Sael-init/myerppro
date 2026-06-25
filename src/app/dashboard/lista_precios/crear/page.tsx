@@ -520,7 +520,7 @@ export default function CrearListaPrecioPage() {
           presentacionId:             pres.key,
           costoValorizado:            toNum(nuevoDetalle.costoValorizado),
           utilidad:                   toNum(nuevoDetalle.utilidad),
-          cantidad_minorista:         scaleQ(cantMin),
+          cantidad_minorista:         1,
           precio_minimo_minorista:    scaleP(pMin),
           cantidad_mayorista:         cantMay > 0 ? scaleQ(cantMay) : undefined,
           precio_minimo_mayorista:    scaleP(pMayRef),

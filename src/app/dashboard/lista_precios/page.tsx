@@ -281,7 +281,6 @@ export default function ListaPreciosPage() {
     let n = 0;
     if (tempFilters.estado)            n++;
     if (tempFilters.tipolistaprecioId) n++;
-    if (tempFilters.soloActivas)       n++;
     return n;
   };
 
@@ -553,6 +552,7 @@ export default function ListaPreciosPage() {
               className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Todos</option>
+              <option value="Disponible">Disponible</option>
               <option value="ACT">Activo</option>
               <option value="INA">Inactivo</option>
               <option value="ANU">Anulado</option>
@@ -581,19 +581,6 @@ export default function ListaPreciosPage() {
               </select>
             </div>
           )}
-
-          <div className="flex items-center gap-2">
-            <input
-              id="soloActivas"
-              type="checkbox"
-              checked={tempFilters.soloActivas ?? false}
-              onChange={(e) => setTempFilters({ ...tempFilters, soloActivas: e.target.checked || undefined })}
-              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="soloActivas" className="text-sm font-medium text-slate-700 cursor-pointer">
-              Solo listas activas
-            </label>
-          </div>
 
         </div>
       </SidebarFiltros>
