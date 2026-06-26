@@ -56,13 +56,13 @@ const TENANT_ID         = "1";
 const CUENTA_USUARIO_ID = "CU0002";
 const LISTA_PRECIO_ID   = "092200000001";
 
-interface PrecioTierInfo { precio: number; min: number; }
+interface PrecioTierInfo { precio: number; min: number; tier: "minorista" | "mayorista" | "distribuidor" | null; }
 const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierInfo => {
   if (det.cantidad_distribuidor != null && cantidad >= det.cantidad_distribuidor && det.precio_minimo_distribuidor != null)
-    return { precio: det.precio_minimo_distribuidor, min: det.precio_minimo_distribuidor };
+    return { precio: det.precio_minimo_distribuidor, min: det.precio_minimo_distribuidor, tier: "distribuidor" };
   if (det.cantidad_mayorista != null && cantidad >= det.cantidad_mayorista && det.precio_minimo_mayorista != null)
-    return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista };
-  return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0 };
+    return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista, tier: "mayorista" };
+  return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -313,6 +313,7 @@ export default function CrearCotizacionPage() {
 
   const [detalles,     setDetalles]     = useState<CotizacionDetalle[]>([]);
   const [nuevoDetalle, setNuevoDetalle] = useState<CotizacionDetalle>(emptyDetalle());
+  const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
 
   // ── Carga inicial de catálogos ─────────────────────────────────────────────
   useEffect(() => {
@@ -583,6 +584,7 @@ export default function CrearCotizacionPage() {
     if (Number(nuevoDetalle.precio)   <= 0) return toast.error("El precio debe ser mayor a 0");
     setDetalles((prev) => [...prev, { ...nuevoDetalle, item: prev.length + 1 } as any]);
     setNuevoDetalle(emptyDetalle());
+    setPrecioTierLabel(null);
     setPresentacionesNuevo([]);
   };
 
@@ -618,6 +620,7 @@ export default function CrearCotizacionPage() {
     });
     setDetalles([]);
     setNuevoDetalle(emptyDetalle());
+    setPrecioTierLabel(null);
     setPresentacionesNuevo([]);
     setSelectedListaId(LISTA_PRECIO_ID);
   };
@@ -969,6 +972,7 @@ export default function CrearCotizacionPage() {
                 onChange={(e) => {
                   setSelectedListaId(e.target.value);
                   setNuevoDetalle(emptyDetalle());
+                  setPrecioTierLabel(null);
                   setPresentacionesNuevo([]);
                 }}
                 className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
@@ -1094,12 +1098,18 @@ export default function CrearCotizacionPage() {
                     onChange={(e: any) => {
                       const presentacionId = e.target.value;
                       const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
-                      const precioAuto = det ? calcPrecioTier(det, nuevoDetalle.cantidad ?? 1).precio : 0;
-                      setNuevoDetalle((prev) => ({
-                        ...prev,
-                        presentacionId,
-                        ...(precioAuto > 0 ? { precio: precioAuto } : {}),
-                      }));
+                      if (det) {
+                        const tierInfo = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+                        setPrecioTierLabel(tierInfo.tier);
+                        setNuevoDetalle((prev) => ({
+                          ...prev,
+                          presentacionId,
+                          ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                        }));
+                      } else {
+                        setPrecioTierLabel(null);
+                        setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
+                      }
                     }}
                   />
                 </td>
@@ -1110,17 +1120,20 @@ export default function CrearCotizacionPage() {
                     disabled={isBusy}
                     onChange={(e) => {
                       const cantidad = Number(e.target.value);
-                      setNuevoDetalle((prev) => {
-                        const det = prev.presentacionId
-                          ? listaPrecioDetalles.find((d) => d.presentacionId === prev.presentacionId)
-                          : undefined;
-                        const precioAuto = det ? calcPrecioTier(det, cantidad).precio : 0;
-                        return {
+                      const det = nuevoDetalle.presentacionId
+                        ? listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId)
+                        : undefined;
+                      if (det) {
+                        const tierInfo = calcPrecioTier(det, cantidad);
+                        setPrecioTierLabel(tierInfo.tier);
+                        setNuevoDetalle((prev) => ({
                           ...prev,
                           cantidad,
-                          ...(det && precioAuto > 0 ? { precio: precioAuto } : {}),
-                        };
-                      });
+                          ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                        }));
+                      } else {
+                        setNuevoDetalle((prev) => ({ ...prev, cantidad }));
+                      }
                     }}
                     className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                   />
@@ -1133,6 +1146,14 @@ export default function CrearCotizacionPage() {
                     onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, precio: Number(e.target.value) }))}
                     className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                   />
+                  {precioTierLabel && (
+                    <p className={`text-[9px] font-bold mt-0.5 text-right ${
+                      precioTierLabel === "distribuidor" ? "text-purple-600" :
+                      precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
+                    }`}>
+                      {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
+                    </p>
+                  )}
                 </td>
                 <td className="p-2 text-right font-mono text-xs text-slate-500">
                   {nuevoDetalle.bienId ? formatMoney(calcImporte(nuevoDetalle)) : "—"}

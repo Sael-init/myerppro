@@ -22,6 +22,14 @@ import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types"
 import StockDisponible from "@/components/shared/StockDisponible";
 
 interface PrecioLimites { min: number; max: number; }
+interface PrecioTierInfo { precio: number; min: number; tier: "minorista" | "mayorista" | "distribuidor" | null; }
+const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierInfo => {
+  if (det.cantidad_distribuidor != null && cantidad >= det.cantidad_distribuidor && det.precio_minimo_distribuidor != null)
+    return { precio: det.precio_minimo_distribuidor, min: det.precio_minimo_distribuidor, tier: "distribuidor" };
+  if (det.cantidad_mayorista != null && cantidad >= det.cantidad_mayorista && det.precio_minimo_mayorista != null)
+    return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista, tier: "mayorista" };
+  return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
+};
 import ClienteFormModal from "@/app/dashboard/clientes/components/ClienteFormModal";
 
 import type {
@@ -318,6 +326,7 @@ function CrearDocumentoVentaContent() {
   const [presentacionesNuevo, setPresentacionesNuevo] = useState<{ key: string; value: string; factor: number }[]>([]);
   const [loadingPres,         setLoadingPres]         = useState(false);
   const [precioLimitesNuevo, setPrecioLimitesNuevo] = useState<PrecioLimites | null>(null);
+  const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
   const [modalImportar,     setModalImportar]     = useState(false);
   const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
   const [pedidoImportadoId,       setPedidoImportadoId]       = useState<string | null>(null);
@@ -696,22 +705,38 @@ function CrearDocumentoVentaContent() {
   const handlePresentacionNuevoChange = useCallback(
     (presentacionId: string) => {
       const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
-      let precio = 0;
-      let limites: PrecioLimites | null = null;
       if (det) {
-        precio  = det.precio_minimo_minorista ?? 0;
-        limites = { min: det.precio_minimo_minorista ?? 0, max: det.precio_minimo_minorista ?? 0 };
+        const cantidadActual = (nuevoDetalle as any).cantidad ?? 1;
+        const tierInfo = calcPrecioTier(det, cantidadActual);
+        setPrecioLimitesNuevo({ min: tierInfo.min, max: tierInfo.min });
+        setPrecioTierLabel(tierInfo.tier);
+        setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}) }));
+      } else {
+        setPrecioLimitesNuevo(null);
+        setPrecioTierLabel(null);
+        setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId }));
       }
-      setPrecioLimitesNuevo(limites);
-      setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));
     },
-    [listaPrecioDetalles, (formData as any).monedaId]
+    [listaPrecioDetalles, nuevoDetalle, (formData as any).monedaId]
   );
 
   const selectedFormaPago = useMemo(
     () => formasPago.find((f: any) => (f.formaspagoId ?? "") === ((formData as any).tipopagoId ?? "")),
     [formasPago, (formData as any).tipopagoId]
   );
+
+  const extractDiasFormaPago = (fp: any): number | null => {
+    if (fp?.diasFormPago != null && Number(fp.diasFormPago) > 0) return Number(fp.diasFormPago);
+    const match = (fp?.descripcion ?? "").match(/\b(\d+)\b/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+
+  const calcFechaVencimiento = (dias: number): string => {
+    const hoy = new Date();
+    const result = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + dias);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${result.getFullYear()}-${pad(result.getMonth() + 1)}-${pad(result.getDate())}`;
+  };
 
   const formasPagoFiltradas = useMemo(() => {
     if (!(formData as any).condicionPago || formasPago.length === 0) return [];
@@ -747,6 +772,12 @@ function CrearDocumentoVentaContent() {
       (selected?.descripcion ?? selected?.condicion_pago ?? (formData as any).condicionPago) as string
     ).toUpperCase().includes("CRED");
   }, [(formData as any).condicionPago, condicionesPago]);
+
+  useEffect(() => {
+    if (!isCondicionCredito || !selectedFormaPago) return;
+    const dias = extractDiasFormaPago(selectedFormaPago);
+    if (dias && dias > 0) updateField("fechaVencimiento", calcFechaVencimiento(dias));
+  }, [selectedFormaPago, isCondicionCredito]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCondicionGratuita = useMemo(() => {
     if (!(formData as any).condicionPago) return false;
@@ -1092,6 +1123,7 @@ function CrearDocumentoVentaContent() {
     ]);
     setNuevoDetalle({ ...emptyDetalle });
     setPrecioLimitesNuevo(null);
+    setPrecioTierLabel(null);
   };
 
   const handleEliminarDetalle = (idx: number) => {
@@ -1470,7 +1502,7 @@ function CrearDocumentoVentaContent() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Condición de Pago *</label>
                 <select value={(formData as any).condicionPago ?? ""}
-                  onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); }}
+                  onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); updateField("fechaVencimiento", undefined); }}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                   <option value="">Seleccione...</option>
                   {condicionesPago.map((cp: any) => {
@@ -1484,7 +1516,15 @@ function CrearDocumentoVentaContent() {
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Forma de Pago</label>
                 <select
                   value={(formData as any).tipopagoId ?? ""}
-                  onChange={(e) => updateField("tipopagoId", e.target.value)}
+                  onChange={(e) => {
+                    const fpId = e.target.value;
+                    updateField("tipopagoId", fpId);
+                    if (isCondicionCredito) {
+                      const fp = formasPago.find((f: any) => (f.formaspagoId ?? "") === fpId);
+                      const dias = extractDiasFormaPago(fp);
+                      if (dias && dias > 0) updateField("fechaVencimiento", calcFechaVencimiento(dias));
+                    }
+                  }}
                   disabled={!(formData as any).condicionPago}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                 >
@@ -1600,6 +1640,7 @@ function CrearDocumentoVentaContent() {
                 onChange={(e) => {
                   setSelectedListaId(e.target.value);
                   setPrecioLimitesNuevo(null);
+                  setPrecioTierLabel(null);
                   setNuevoDetalle({ ...emptyDetalle });
                 }}
                 className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
@@ -1768,7 +1809,18 @@ function CrearDocumentoVentaContent() {
                       type="number" min={0.01} step="0.01"
                       value={(nuevoDetalle as any).cantidad}
                       disabled={loadingCat}
-                      onChange={(e: any) => setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: parseFloat(e.target.value) || 0 }))}
+                      onChange={(e: any) => {
+                        const nuevaCantidad = parseFloat(e.target.value) || 0;
+                        const det = listaPrecioDetalles.find((d) => d.presentacionId === (nuevoDetalle as any).presentacionId);
+                        if (det) {
+                          const tierInfo = calcPrecioTier(det, nuevaCantidad);
+                          setPrecioLimitesNuevo({ min: tierInfo.min, max: tierInfo.min });
+                          setPrecioTierLabel(tierInfo.tier);
+                          setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: nuevaCantidad, precio: tierInfo.precio }));
+                        } else {
+                          setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: nuevaCantidad }));
+                        }
+                      }}
                       className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
                     />
                   </td>
@@ -1799,8 +1851,14 @@ function CrearDocumentoVentaContent() {
                           : "border-slate-200 focus:ring-blue-500"
                       }`}
                     />
-                    {precioLimitesNuevo && precioLimitesNuevo.min > 0 && (
-                      <p className="text-[9px] text-slate-400 mt-0.5">Mín: {precioLimitesNuevo.min.toFixed(2)}</p>
+                    {precioTierLabel && (
+                      <p className={`text-[9px] font-bold mt-0.5 text-right ${
+                        precioTierLabel === "distribuidor" ? "text-purple-600" :
+                        precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
+                      }`}>
+                        {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
+                        {precioLimitesNuevo && precioLimitesNuevo.min > 0 ? ` · Mín: ${precioLimitesNuevo.min.toFixed(2)}` : ""}
+                      </p>
                     )}
                   </td>
                   <td className="p-2 text-right font-mono text-xs text-slate-500">

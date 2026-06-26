@@ -291,7 +291,7 @@ export default function GuiaRemisionPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
   const handleFechaTrasladoChange = (value: string) => {
-    if (isBefore(parseISO(value), parseISO(todayStr)))
+    if (value < todayStr)
       toast.warning("La fecha de traslado no puede ser menor a la fecha actual");
     update("fechaTraslado", value);
   };
@@ -517,92 +517,6 @@ export default function GuiaRemisionPage() {
         {/* ══════════════════ COLUMNA PRINCIPAL ══════════════════ */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
 
-          {/* ── Información General ── */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-              <IconBarcode size={120} />
-            </div>
-            <SectionTitle title="Información General" icon={IconFileDescription} />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Tipo documento */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tipo Documento</label>
-                <select value={TIPO_DOC_GUIA} disabled
-                  className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none bg-slate-50 font-bold text-slate-700">
-                  {docTypeOptions.length === 0 && <option value="">Cargando...</option>}
-                  {docTypeOptions.map((t: any) => (
-                    <option key={t.key} value={t.key}>{t.value}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Serie + Correlativo */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Serie</label>
-                  <select
-                    value={form.serie}
-                    onChange={(e) => update("serie", e.target.value)}
-                    disabled={filteredSeries.length === 0 || loadingSeries}
-                    className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-slate-50"
-                  >
-                    {(filteredSeries.length === 0 || loadingSeries) && (
-                      <option value="">{loadingSeries ? "Cargando..." : "-"}</option>
-                    )}
-                    {filteredSeries.map((s: any) => (
-                      <option key={s.key} value={s.key}>{s.value}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 flex justify-between">
-                    Correlativo
-                    <div className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isManualCorrelativo}
-                        onChange={(e) => {
-                          setIsManualCorrelativo(e.target.checked);
-                          if (!e.target.checked) update("correlativo", "");
-                        }}
-                        className="w-3 h-3 accent-indigo-600 cursor-pointer"
-                      />
-                      <span className="text-[9px] text-indigo-600 font-bold select-none">MANUAL</span>
-                    </div>
-                  </label>
-                  <input
-                    value={form.correlativo || ""}
-                    onChange={(e) => isManualCorrelativo && update("correlativo", e.target.value)}
-                    disabled={!isManualCorrelativo}
-                    placeholder={isManualCorrelativo ? "Escriba..." : "Automático"}
-                    className={`w-full border p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono tracking-wider
-                      ${isManualCorrelativo
-                        ? "bg-white border-indigo-300"
-                        : "bg-slate-50 border-slate-200 text-slate-500"}`}
-                  />
-                </div>
-              </div>
-
-              {/* Fechas */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Fecha Documento</label>
-                  <div className="w-full border border-slate-200 p-2.5 rounded-lg text-xs bg-slate-100 text-slate-500 font-medium">
-                    {todayStr ? todayStr.split("-").reverse().join("/") : ""}
-                  </div>
-                </div>
-                <DateInput
-                  label="Fecha Traslado"
-                  name="fechaTraslado"
-                  value={form.fechaTraslado || todayStr}
-                  onChange={(e) => handleFechaTrasladoChange(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
           {/* ── Datos del Traslado ── */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <SectionTitle title="Datos del Traslado" icon={IconMapPin} />
@@ -702,6 +616,92 @@ export default function GuiaRemisionPage() {
                   label="Dirección de Llegada"
                   value={form.puntoLlegada}
                   onChange={(e: any) => update("puntoLlegada", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Información General ── */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              <IconBarcode size={120} />
+            </div>
+            <SectionTitle title="Información General" icon={IconFileDescription} />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Tipo documento */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tipo Documento</label>
+                <select value={TIPO_DOC_GUIA} disabled
+                  className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none bg-slate-50 font-bold text-slate-700">
+                  {docTypeOptions.length === 0 && <option value="">Cargando...</option>}
+                  {docTypeOptions.map((t: any) => (
+                    <option key={t.key} value={t.key}>{t.value}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Serie + Correlativo */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Serie</label>
+                  <select
+                    value={form.serie}
+                    onChange={(e) => update("serie", e.target.value)}
+                    disabled={filteredSeries.length === 0 || loadingSeries}
+                    className="w-full border border-slate-200 p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-slate-50"
+                  >
+                    {(filteredSeries.length === 0 || loadingSeries) && (
+                      <option value="">{loadingSeries ? "Cargando..." : "-"}</option>
+                    )}
+                    {filteredSeries.map((s: any) => (
+                      <option key={s.key} value={s.key}>{s.value}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 flex justify-between">
+                    Correlativo
+                    <div className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isManualCorrelativo}
+                        onChange={(e) => {
+                          setIsManualCorrelativo(e.target.checked);
+                          if (!e.target.checked) update("correlativo", "");
+                        }}
+                        className="w-3 h-3 accent-indigo-600 cursor-pointer"
+                      />
+                      <span className="text-[9px] text-indigo-600 font-bold select-none">MANUAL</span>
+                    </div>
+                  </label>
+                  <input
+                    value={form.correlativo || ""}
+                    onChange={(e) => isManualCorrelativo && update("correlativo", e.target.value)}
+                    disabled={!isManualCorrelativo}
+                    placeholder={isManualCorrelativo ? "Escriba..." : "Automático"}
+                    className={`w-full border p-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono tracking-wider
+                      ${isManualCorrelativo
+                        ? "bg-white border-indigo-300"
+                        : "bg-slate-50 border-slate-200 text-slate-500"}`}
+                  />
+                </div>
+              </div>
+
+              {/* Fechas */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Fecha Documento</label>
+                  <div className="w-full border border-slate-200 p-2.5 rounded-lg text-xs bg-slate-100 text-slate-500 font-medium">
+                    {todayStr ? todayStr.split("-").reverse().join("/") : ""}
+                  </div>
+                </div>
+                <DateInput
+                  label="Fecha Traslado"
+                  name="fechaTraslado"
+                  value={form.fechaTraslado || todayStr}
+                  onChange={(e) => handleFechaTrasladoChange(e.target.value)}
                 />
               </div>
             </div>
