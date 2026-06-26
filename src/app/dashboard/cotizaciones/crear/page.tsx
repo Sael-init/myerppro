@@ -314,6 +314,7 @@ export default function CrearCotizacionPage() {
   const [detalles,     setDetalles]     = useState<CotizacionDetalle[]>([]);
   const [nuevoDetalle, setNuevoDetalle] = useState<CotizacionDetalle>(emptyDetalle());
   const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
+  const [precioLimites,   setPrecioLimites]   = useState<{ min: number } | null>(null);
 
   // ── Carga inicial de catálogos ─────────────────────────────────────────────
   useEffect(() => {
@@ -572,9 +573,12 @@ export default function CrearCotizacionPage() {
     if (!nuevoDetalle.presentacionId)       return toast.error("Seleccione la presentación");
     if (Number(nuevoDetalle.cantidad) <= 0) return toast.error("La cantidad debe ser mayor a 0");
     if (Number(nuevoDetalle.precio)   <= 0) return toast.error("El precio debe ser mayor a 0");
+    if (precioLimites && Number(nuevoDetalle.precio) < precioLimites.min)
+      return toast.error(`El precio no puede ser menor al mínimo (${precioLimites.min.toFixed(2)})`);
     setDetalles((prev) => [...prev, { ...nuevoDetalle, item: prev.length + 1 } as any]);
     setNuevoDetalle(emptyDetalle());
     setPrecioTierLabel(null);
+    setPrecioLimites(null);
     setPresentacionesNuevo([]);
   };
 
@@ -611,6 +615,7 @@ export default function CrearCotizacionPage() {
     setDetalles([]);
     setNuevoDetalle(emptyDetalle());
     setPrecioTierLabel(null);
+    setPrecioLimites(null);
     setPresentacionesNuevo([]);
     setSelectedListaId(LISTA_PRECIO_ID);
   };
@@ -963,6 +968,7 @@ export default function CrearCotizacionPage() {
                   setSelectedListaId(e.target.value);
                   setNuevoDetalle(emptyDetalle());
                   setPrecioTierLabel(null);
+                  setPrecioLimites(null);
                   setPresentacionesNuevo([]);
                 }}
                 className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
@@ -1091,6 +1097,7 @@ export default function CrearCotizacionPage() {
                       if (det) {
                         const tierInfo = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
                         setPrecioTierLabel(tierInfo.tier);
+                        setPrecioLimites({ min: tierInfo.min });
                         setNuevoDetalle((prev) => ({
                           ...prev,
                           presentacionId,
@@ -1098,6 +1105,7 @@ export default function CrearCotizacionPage() {
                         }));
                       } else {
                         setPrecioTierLabel(null);
+                        setPrecioLimites(null);
                         setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
                       }
                     }}
@@ -1116,6 +1124,7 @@ export default function CrearCotizacionPage() {
                       if (det) {
                         const tierInfo = calcPrecioTier(det, cantidad);
                         setPrecioTierLabel(tierInfo.tier);
+                        setPrecioLimites({ min: tierInfo.min });
                         setNuevoDetalle((prev) => ({
                           ...prev,
                           cantidad,
@@ -1130,11 +1139,15 @@ export default function CrearCotizacionPage() {
                 </td>
                 <td className="p-1.5 w-28">
                   <input
-                    type="number" min={0} step="0.000001"
+                    type="number" min={precioLimites?.min ?? 0} step="0.000001"
                     value={nuevoDetalle.precio ?? ""}
                     disabled={isBusy}
                     onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, precio: Number(e.target.value) }))}
-                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
+                    className={`w-full border rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 transition-all disabled:bg-slate-50 ${
+                      precioLimites && nuevoDetalle.precio != null && nuevoDetalle.precio < precioLimites.min
+                        ? "border-red-400 focus:ring-red-400 bg-red-50"
+                        : "border-slate-200 focus:ring-blue-500"
+                    }`}
                   />
                   {precioTierLabel && (
                     <p className={`text-[9px] font-bold mt-0.5 text-right ${
@@ -1142,6 +1155,7 @@ export default function CrearCotizacionPage() {
                       precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
                     }`}>
                       {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
+                      {precioLimites && precioLimites.min > 0 ? ` · Mín: ${precioLimites.min.toFixed(2)}` : ""}
                     </p>
                   )}
                 </td>

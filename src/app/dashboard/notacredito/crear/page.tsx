@@ -52,8 +52,8 @@ import {
   IconX,
   IconRefresh,
   IconUserPlus,
-  IconArrowLeft,
   IconFileImport,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -865,28 +865,34 @@ function CrearNotaCreditoContent() {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 pb-20">
+    <div className="p-6 pb-20 max-w-6xl mx-auto uppercase">
 
       {/* ── Header ── */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => router.push("/dashboard/notacredito")}
-            className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-blue-600 transition-colors"
           >
-            <IconArrowLeft size={22} />
+            <IconArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">
+            <div className="flex items-center gap-1 text-xs text-slate-400 mb-0.5 normal-case">
+              <span className="hover:text-blue-600 cursor-pointer transition-colors" onClick={() => router.push("/dashboard/notacredito")}>
+                Notas de Crédito
+              </span>
+              <span>/</span>
+              <span className="text-slate-600 font-semibold">Nueva Nota de Crédito</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
               {TIPOS_NC_ND[formData.tipodoccomercialId] ?? "Nota de Crédito / Débito"}
             </h1>
-            <p className="text-xs mt-0.5">
-              {dvImportadoId
-                ? <span className="text-emerald-600 font-semibold">✓ DV referenciado {formData.documentoventaReferenciaId} — datos pre-cargados</span>
-                : <span className="text-slate-500">Importe un documento de venta para continuar</span>
-              }
-            </p>
+            {dvImportadoId && (
+              <p className="text-xs text-emerald-600 font-semibold mt-0.5 normal-case">
+                ✓ DV referenciado {formData.documentoventaReferenciaId} — datos pre-cargados
+              </p>
+            )}
           </div>
         </div>
 
@@ -895,26 +901,26 @@ function CrearNotaCreditoContent() {
             type="button"
             onClick={() => setModalImportar(true)}
             disabled={loadingCat || loading}
-            className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 hover:border-slate-300 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
+            className="px-4 py-2.5 rounded-lg border border-blue-300 text-blue-700 font-bold hover:bg-blue-50 disabled:opacity-50 transition-colors flex items-center gap-2"
           >
-            <IconFileImport size={18} className="text-indigo-500" />
+            <IconFileImport size={17} />
             Importar DV
           </button>
           <button
             type="button"
             onClick={handleLimpiar}
             disabled={loading}
-            className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
+            className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors flex items-center gap-2"
           >
-            <IconRefresh size={18} />
+            <IconRefresh size={17} />
             Limpiar
           </button>
           <button
             onClick={handleSubmit}
             disabled={loadingCat || loading}
-            className="px-6 py-2.5 rounded-xl text-white font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? <IconLoader size={20} className="animate-spin" /> : <IconSend size={20} />}
+            {loading ? <IconLoader size={18} className="animate-spin" /> : <IconSend size={18} />}
             Guardar
           </button>
         </div>
@@ -1113,8 +1119,11 @@ function CrearNotaCreditoContent() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Forma de Pago</label>
                 <select value={formData.tipopagoId ?? ""} onChange={(e) => updateField("tipopagoId", e.target.value)}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
-                  <option value="">Seleccione...</option>
+                  disabled={!formData.condicionPago}
+                  className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed">
+                  <option value="">
+                    {!formData.condicionPago ? "Seleccione primero condición de pago" : "Seleccione..."}
+                  </option>
                   {formasPagoFiltradas.map((fp: any) => (
                     <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
                       {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
