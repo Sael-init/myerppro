@@ -11,7 +11,7 @@ import {
   IconInbox,
   IconRefresh,
 } from "@tabler/icons-react";
-import documentoVentaService from "@/services/documentoventaService";
+import documentoVentaService from "@/services/DocumentoventaService";
 import type { DocumentoVenta } from "@/types/Documentoventa.types";
 
 // ─────────────────────────────────────────────────────────────────────────────

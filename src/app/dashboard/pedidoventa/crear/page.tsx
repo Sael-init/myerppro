@@ -783,21 +783,35 @@ export default function CrearPedidoVentaPage() {
     const condDesc = (
       (selectedCP.descripcion ?? selectedCP.condicion_pago ?? form.condicion_pago) as string
     ).toUpperCase();
-    if (condDesc.includes("CRED")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
-      );
-    } else if (condDesc.includes("GRATU")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
-      );
-    } else {
-      return formasPago.filter((fp: any) => {
-        const fpCond = (fp.condicionPago ?? "").toUpperCase();
-        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
-      });
-    }
+    return formasPago.filter((fp: any) =>
+      (fp.condicionPago ?? "").toUpperCase() === condDesc
+    );
   }, [form.condicion_pago, condicionesPago, formasPago]);
+
+  const selectedFormaPagoPV = useMemo(
+    () => formasPago.find((f: any) => (f.formaspagoId ?? "") === (form.formaspagoId ?? "")),
+    [formasPago, form.formaspagoId]
+  );
+
+  const isCondicionCreditoPV = useMemo(() => {
+    if (!form.condicion_pago) return false;
+    const sel = condicionesPago.find((cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === form.condicion_pago) as any;
+    return ((sel?.descripcion ?? sel?.condicion_pago ?? form.condicion_pago) as string).toUpperCase().includes("CRED");
+  }, [form.condicion_pago, condicionesPago]);
+
+  useEffect(() => {
+    if (!isCondicionCreditoPV || !selectedFormaPagoPV) return;
+    const fp = selectedFormaPagoPV as any;
+    const dias = fp.diasFormPago != null && Number(fp.diasFormPago) > 0
+      ? Number(fp.diasFormPago)
+      : (() => { const m = (fp.descripcion ?? "").match(/\b(\d+)\b/); return m ? parseInt(m[1], 10) : null; })();
+    if (dias && dias > 0) {
+      const hoy = new Date();
+      const r = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + dias);
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      setForm((prev) => ({ ...prev, fecha_vencimiento: `${r.getFullYear()}-${pad(r.getMonth() + 1)}-${pad(r.getDate())}` }));
+    }
+  }, [selectedFormaPagoPV, isCondicionCreditoPV]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Helpers tipo entrega ───────────────────────────────────────────────────
   const tipoEntregaDesc = tiposEntrega
@@ -1262,7 +1276,7 @@ export default function CrearPedidoVentaPage() {
               <select
                 name="condicion_pago"
                 value={form.condicion_pago}
-                onChange={(e) => setForm((prev) => ({ ...prev, condicion_pago: e.target.value, formaspagoId: "" }))}
+                onChange={(e) => setForm((prev) => ({ ...prev, condicion_pago: e.target.value, formaspagoId: "", fecha_vencimiento: "" }))}
                 onFocus={refreshCondicionesPago}
                 disabled={isBusy}
                 className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"

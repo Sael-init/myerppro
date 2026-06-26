@@ -747,20 +747,9 @@ function CrearDocumentoVentaContent() {
     const condDesc = (
       (selectedCP.descripcion ?? selectedCP.condicion_pago ?? (formData as any).condicionPago) as string
     ).toUpperCase();
-    if (condDesc.includes("CRED")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
-      );
-    } else if (condDesc.includes("GRATU")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
-      );
-    } else {
-      return formasPago.filter((fp: any) => {
-        const fpCond = (fp.condicionPago ?? "").toUpperCase();
-        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
-      });
-    }
+    return formasPago.filter((fp: any) =>
+      (fp.condicionPago ?? "").toUpperCase() === condDesc
+    );
   }, [(formData as any).condicionPago, condicionesPago, formasPago]);
 
   const isCondicionCredito = useMemo(() => {

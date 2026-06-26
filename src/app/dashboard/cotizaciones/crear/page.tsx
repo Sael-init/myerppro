@@ -516,21 +516,11 @@ export default function CrearCotizacionPage() {
     const condDesc = (
       (selectedCP.descripcion ?? selectedCP.condicion_pago ?? form.condicionPago) as string
     ).toUpperCase();
-    if (condDesc.includes("CRED")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("CRED") || (fp.diasFormPago ?? 0) > 0
-      );
-    } else if (condDesc.includes("GRATU")) {
-      return formasPago.filter((fp: any) =>
-        (fp.condicionPago ?? "").toUpperCase().includes("GRATU")
-      );
-    } else {
-      return formasPago.filter((fp: any) => {
-        const fpCond = (fp.condicionPago ?? "").toUpperCase();
-        return fpCond.includes("CONTADO") || (!fpCond && (fp.diasFormPago ?? 0) === 0);
-      });
-    }
+    return formasPago.filter((fp: any) =>
+      (fp.condicionPago ?? "").toUpperCase() === condDesc
+    );
   }, [form.condicionPago, condicionesPago, formasPago]);
+
 
   // ── Auto-calcular fechaVencimiento a partir de tiempoValidez ──────────────
   useEffect(() => {
@@ -810,7 +800,7 @@ export default function CrearCotizacionPage() {
                 <select
                   name="condicionPago"
                   value={form.condicionPago}
-                  onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "" }))}
+                  onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "", fechaVencimiento: "" }))}
                   onFocus={refreshCondicionesPago}
                   disabled={isBusy}
                   className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"

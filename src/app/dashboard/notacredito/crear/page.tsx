@@ -651,6 +651,20 @@ function CrearNotaCreditoContent() {
     setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precio > 0 ? { precio } : {}) }));
   }, [listaPrecioDetalles, formData.monedaId]);
 
+  const formasPagoFiltradas = useMemo(() => {
+    if (!formData.condicionPago || formasPago.length === 0) return [];
+    const selectedCP = condicionesPago.find(
+      (cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === formData.condicionPago
+    ) as any;
+    if (!selectedCP) return formasPago;
+    const condDesc = (
+      (selectedCP.descripcion ?? selectedCP.condicion_pago ?? formData.condicionPago) as string
+    ).toUpperCase();
+    return formasPago.filter((fp: any) =>
+      (fp.condicionPago ?? "").toUpperCase() === condDesc
+    );
+  }, [formData.condicionPago, condicionesPago, formasPago]);
+
   const selectedFormaPago = useMemo(
     () => formasPago.find((f: any) => (f.formaspagoId ?? "") === (formData.tipopagoId ?? "")),
     [formasPago, formData.tipopagoId]
@@ -661,6 +675,20 @@ function CrearNotaCreditoContent() {
     const sel = condicionesPago.find((cp: any) => (cp.condicionPagoId ?? cp.condicion_pago) === formData.condicionPago) as any;
     return ((sel?.descripcion ?? sel?.condicion_pago ?? formData.condicionPago) as string).toUpperCase().includes("CRED");
   }, [formData.condicionPago, condicionesPago]);
+
+  useEffect(() => {
+    if (!isCondicionCredito || !selectedFormaPago) return;
+    const fp = selectedFormaPago as any;
+    const dias = fp.diasFormPago != null && Number(fp.diasFormPago) > 0
+      ? Number(fp.diasFormPago)
+      : (() => { const m = (fp.descripcion ?? "").match(/\b(\d+)\b/); return m ? parseInt(m[1], 10) : null; })();
+    if (dias && dias > 0) {
+      const hoy = new Date();
+      const r = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + dias);
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      updateField("fechaVencimiento", `${r.getFullYear()}-${pad(r.getMonth() + 1)}-${pad(r.getDate())}`);
+    }
+  }, [selectedFormaPago, isCondicionCredito]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCondicionGratuita = useMemo(() => {
     if (!formData.condicionPago) return false;
@@ -1072,7 +1100,7 @@ function CrearNotaCreditoContent() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Condición de Pago *</label>
                 <select value={formData.condicionPago ?? ""}
-                  onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); }}
+                  onChange={(e) => { updateField("condicionPago", e.target.value); updateField("tipopagoId", ""); updateField("tipoopegratuitaId", "00"); updateField("fechaVencimiento", undefined); }}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                   <option value="">Seleccione...</option>
                   {condicionesPago.map((cp: any) => {
@@ -1087,7 +1115,7 @@ function CrearNotaCreditoContent() {
                 <select value={formData.tipopagoId ?? ""} onChange={(e) => updateField("tipopagoId", e.target.value)}
                   className="w-full border border-slate-200 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white uppercase">
                   <option value="">Seleccione...</option>
-                  {formasPago.map((fp: any) => (
+                  {formasPagoFiltradas.map((fp: any) => (
                     <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
                       {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
                     </option>
