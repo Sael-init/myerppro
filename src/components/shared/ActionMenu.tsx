@@ -1,14 +1,16 @@
 "use client";
 import { useState, useRef, useEffect } from 'react';
-import { 
-    IconEdit, 
-    IconBan, 
+import {
+    IconEdit,
+    IconBan,
     IconEye,
     IconTrash,
     IconDotsVertical,
     IconCloudUpload,
     IconReceipt,
     IconPrinter,
+    IconDownload,
+    IconRoute,
 } from '@tabler/icons-react';
 
 interface ActionMenuProps {
@@ -19,6 +21,8 @@ interface ActionMenuProps {
     onValidarSunat?:  () => void;
     onBoletear?:      () => void;
     onImprimir?:      () => void;
+    onDescargar?:     () => void;
+    onTrazabilidad?:  () => void;
     isAnulado?:       boolean;
     label?:           string;
 }
@@ -31,6 +35,8 @@ export default function ActionMenu({
     onValidarSunat,
     onBoletear,
     onImprimir,
+    onDescargar,
+    onTrazabilidad,
     isAnulado = false,
     label,
 }: ActionMenuProps) {
@@ -102,6 +108,26 @@ export default function ActionMenu({
                 ? 'text-sky-700 hover:bg-sky-50'
                 : 'text-slate-300 cursor-not-allowed',
             hidden:   !onImprimir,
+        },
+        {
+            label:    'Trazabilidad',
+            icon:     <IconRoute size={15} />,
+            onClick:  onTrazabilidad,
+            disabled: !onTrazabilidad,
+            color:    onTrazabilidad
+                ? 'text-indigo-700 hover:bg-indigo-50'
+                : 'text-slate-300 cursor-not-allowed',
+            hidden:   !onTrazabilidad,
+        },
+        {
+            label:    'Descargar Sunat',
+            icon:     <IconDownload size={15} />,
+            onClick:  onDescargar,
+            disabled: !onDescargar,
+            color:    onDescargar
+                ? 'text-teal-700 hover:bg-teal-50'
+                : 'text-slate-300 cursor-not-allowed',
+            hidden:   !onDescargar,
         },
         {
             label:    'Eliminar',

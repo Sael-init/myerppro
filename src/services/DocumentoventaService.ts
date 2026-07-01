@@ -517,6 +517,26 @@ async actualizarGuiaRemision(
     }
   }
 
+  async getTrazabilidad(documentoventaId: string): Promise<any> {
+    try {
+      const { data } = await apiClient.get(`/Trazabilidad/trazabilidad/DOCUMENTOVENTA/${documentoventaId}`);
+      return data.data ?? data;
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al obtener trazabilidad');
+    }
+  }
+
+  async descargarArchivosMifact(documentoventaId: string, empresaId: string): Promise<any> {
+    try {
+      const { data } = await apiClient.get(`${this.base}/${documentoventaId}/descargar-mifact`, {
+        params: { empresaId },
+      });
+      return data.data ?? data;
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al descargar archivos MiFact');
+    }
+  }
+
   async getIgvVigente(): Promise<number> {
     try {
       const { data: api } = await apiClient.get(`${this.base}/igvVigente`);

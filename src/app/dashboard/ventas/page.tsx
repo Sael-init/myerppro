@@ -14,6 +14,7 @@ import DataTable from "@/components/shared/DataTable";
 import SidebarFiltros from "@/components/filter/FiltrosAvanzados";
 import DateInput from "@/components/forms/DateInput";
 import DocumentoVentaViewModal from "./components/VentasViewModal";
+import TrazabilidadModal from "./components/TrazabilidadModal";
 import ActionMenu from "@/components/shared/ActionMenu";
 
 import {
@@ -109,6 +110,8 @@ export default function DocumentosVentaPage() {
   const [showFilters,        setShowFilters]         = useState(false);
   const [showViewModal,      setShowViewModal]       = useState(false);
   const [viewDocumentoId,    setViewDocumentoId]     = useState<string | null>(null);
+  const [showTrazabilidad,   setShowTrazabilidad]    = useState(false);
+  const [trazabilidadId,     setTrazabilidadId]      = useState<string | null>(null);
   const [showBoleteoModal,   setShowBoleteoModal]    = useState(false);
   const [boleteoDocumentoId, setBoleteoDocumentoId]  = useState<string | null>(null);
   const [serieBoleteo,       setSerieBoleteo]        = useState("");
@@ -145,6 +148,11 @@ export default function DocumentosVentaPage() {
     setShowViewModal(true);
   }, []);
 
+  const handleTrazabilidad = useCallback((id: string) => {
+    setTrazabilidadId(id);
+    setShowTrazabilidad(true);
+  }, []);
+
   const handleEdit = useCallback((id: string) => {
     router.push(`/dashboard/ventas/crear/d_ventas?editId=${id}`);
   }, [router]);
@@ -161,6 +169,29 @@ export default function DocumentosVentaPage() {
     setBoleteoDocumentoId(id);
     setSerieBoleteo("");
     setShowBoleteoModal(true);
+  }, []);
+
+  const handleDescargar = useCallback(async (id: string) => {
+    try {
+      toast.loading("Descargando archivos MiFact...", { id: "descargar-mifact" });
+      const resultado = await documentoVentaService.descargarArchivosMifact(id, EMPRESA_ID);
+      const resData = resultado?.data ?? resultado;
+      const isSuccess = resData?.isSuccess ?? resData?.IsSuccess ?? false;
+      const message = resData?.message ?? resData?.Message ?? "";
+      if (isSuccess) {
+        toast.success(message || "Archivos descargados correctamente", { id: "descargar-mifact" });
+      } else {
+        const errores = resData?.archivosConError ?? resData?.ArchivosConError ?? [];
+        const guardados = resData?.archivosGuardados ?? resData?.ArchivosGuardados ?? [];
+        if (errores.length > 0 && guardados.length > 0) {
+          toast.warning(message || "Descarga parcial: algunos archivos fallaron", { id: "descargar-mifact" });
+        } else {
+          toast.error(message || "Error al descargar los archivos", { id: "descargar-mifact" });
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Error al descargar archivos MiFact", { id: "descargar-mifact" });
+    }
   }, []);
 
   const handleImprimir = useCallback(async (id: string) => {
@@ -370,13 +401,15 @@ export default function DocumentosVentaPage() {
                 : undefined
             }
             onImprimir={() => row.documentoventaId && handleImprimir(row.documentoventaId)}
+            onDescargar={st === "ACEPTADO" ? () => row.documentoventaId && handleDescargar(row.documentoventaId) : undefined}
+            onTrazabilidad={() => row.documentoventaId && handleTrazabilidad(row.documentoventaId)}
             isAnulado={esAnulado}
             label={`${row.serie}-${row.numero} · ${row.estado || "ACTIVO"}`}
           />
         );
       },
     },
-  ], [handleView, handleEdit, handleAnular, handleValidarSunat, handleBoletear, handleImprimir]);
+  ], [handleView, handleEdit, handleAnular, handleValidarSunat, handleBoletear, handleImprimir, handleDescargar, handleTrazabilidad]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -529,6 +562,13 @@ export default function DocumentosVentaPage() {
           </div>
         </div>
       </SidebarFiltros>
+
+      {/* Modal Trazabilidad */}
+      <TrazabilidadModal
+        documentoventaId={trazabilidadId}
+        isOpen={showTrazabilidad}
+        onClose={() => { setShowTrazabilidad(false); setTrazabilidadId(null); }}
+      />
 
       {/* Modal Ver */}
       <DocumentoVentaViewModal

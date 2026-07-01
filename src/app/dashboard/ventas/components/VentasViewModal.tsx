@@ -503,7 +503,7 @@ export default function DocumentoVentaViewModal({
                         </th>
                       )}
                       <th className="px-3 py-2.5 text-center font-bold text-slate-600">
-                        Saldo
+                        Por Despachar
                       </th>
                       <th className="px-3 py-2.5 text-right font-bold text-slate-600">
                         Precio
@@ -556,8 +556,8 @@ export default function DocumentoVentaViewModal({
                           </td>
                         )}
                         <td className="px-3 py-2 text-center font-mono">
-                          {(detalle as any).saldoCantidad != null
-                            ? Number((detalle as any).saldoCantidad).toFixed(2)
+                          {(detalle as any).saldoTemporal != null
+                            ? Number((detalle as any).saldoTemporal).toFixed(2)
                             : "-"}
                         </td>
                         <td className="px-3 py-2 text-right font-mono">
