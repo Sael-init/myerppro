@@ -7,7 +7,14 @@
       "Bash(npm install *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\\\\src\\\\app\\\\dashboard\" -Directory)",
       "Bash(Select-Object Name)",
-      "Bash(Select-String \"lista_precios\")"
+      "Bash(Select-String \"lista_precios\")",
+      "PowerShell(cd \"C:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"TrazabilidadPanel\" })",
+      "PowerShell(cd \"C:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"d_ventas/page\" })",
+      "PowerShell(cd \"C:\\\\Users\\\\salva\\\\Documents\\\\mi-erp-next-main\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"pedidoventa/crear\" })",
+      "Bash(rm \"src/app/dashboard/ventas/components/TrazabilidadPanel.tsx\" \"src/app/dashboard/ventas/components/TrazabilidadModal.tsx\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\salva\\Documents\\mi-erp-next-main\\src\\app\\dashboard\\ventas\\components"
     ]
   }
 }

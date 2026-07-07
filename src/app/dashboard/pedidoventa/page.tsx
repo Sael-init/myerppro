@@ -39,7 +39,9 @@ import {
   IconEye,
   IconPrinter,
   IconFileDescription,
+  IconRoute,
 } from "@tabler/icons-react";
+import TrazabilidadPanel from "@/components/shared/TrazabilidadPanel";
 import { toast } from "sonner";
 
 const EMPRESA_ID        = "005";
@@ -298,19 +300,20 @@ const confirmConfig: Record<ConfirmType, { title: string; msg: string; btnLabel:
 
 // ── ActionMenu ───────────────────────────────────────────────────────────────
 interface PedidoMenuProps {
-  row:            PedidoVenta;
-  onView:         () => void;
-  onPrint:        () => void;
-  onEdit?:        () => void;
-  onAprobar?:     () => void;
-  onDesaprobar?:  () => void;
-  onAnular?:      () => void;
-  onComprometer?: () => void;
-  onDelete?:      () => void;
+  row:              PedidoVenta;
+  onView:           () => void;
+  onPrint:          () => void;
+  onTrazabilidad:   () => void;
+  onEdit?:          () => void;
+  onAprobar?:       () => void;
+  onDesaprobar?:    () => void;
+  onAnular?:        () => void;
+  onComprometer?:   () => void;
+  onDelete?:        () => void;
 }
 
 const PedidoAccionesMenu = ({
-  row, onView, onPrint, onEdit, onAprobar, onDesaprobar, onAnular, onComprometer, onDelete,
+  row, onView, onPrint, onTrazabilidad, onEdit, onAprobar, onDesaprobar, onAnular, onComprometer, onDelete,
 }: PedidoMenuProps) => {
   const [open, setOpen] = useState(false);
   return (
@@ -347,6 +350,14 @@ const PedidoAccionesMenu = ({
           >
             <IconPrinter size={14} />
             Imprimir / Descargar
+          </button>
+
+          <button
+            onClick={() => { setOpen(false); onTrazabilidad(); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-indigo-700 hover:bg-indigo-50 transition-colors"
+          >
+            <IconRoute size={14} />
+            Trazabilidad
           </button>
 
           {onEdit && (
@@ -460,8 +471,10 @@ export default function PedidoVentaPage() {
 
   const [tempFilters, setTempFilters]     = useState<FiltrosPedidoVenta>(initialFilters);
   const [showFilters, setShowFilters]     = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [viewPedidoId, setViewPedidoId]   = useState<string | null>(null);
+  const [showViewModal, setShowViewModal]   = useState(false);
+  const [viewPedidoId, setViewPedidoId]     = useState<string | null>(null);
+  const [showTrazabilidad, setShowTrazabilidad] = useState(false);
+  const [trazabilidadId, setTrazabilidadId]     = useState<string | null>(null);
   const [showLeyenda, setShowLeyenda]     = useState(false);
 
   // ── Modal confirmación simple ─────────────────────────────────────────────
@@ -755,6 +768,7 @@ export default function PedidoVentaPage() {
                 setShowViewModal(true);
               }}
               onPrint={() => handlePrint(row)}
+              onTrazabilidad={() => { if (!row.pedidoventaId) return; setTrazabilidadId(row.pedidoventaId); setShowTrazabilidad(true); }}
               onEdit={esRegistrado        ? () => handleEdit(row)                : undefined}
               onAprobar={esRegistrado     ? () => openConfirm("aprobar", row)    : undefined}
               onDesaprobar={esAprobado    ? () => openConfirm("desaprobar", row) : undefined}
@@ -831,14 +845,24 @@ export default function PedidoVentaPage() {
         </button>
       </div>
 
-      {/* ── Tabla ── */}
-      <DataTable
-        columns={columns}
-        data={data}
-        loading={loading}
-        meta={meta}
-        onPageChange={fetchData}
-      />
+      {/* ── Tabla / Panel Trazabilidad ── */}
+      {showTrazabilidad ? (
+        <div className="animate-in slide-in-from-right-4 duration-300">
+          <TrazabilidadPanel
+            tabla="PEDIDOVENTA"
+            id={trazabilidadId}
+            onClose={() => { setShowTrazabilidad(false); setTrazabilidadId(null); }}
+          />
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={loading}
+          meta={meta}
+          onPageChange={fetchData}
+        />
+      )}
 
       {/* ── Sidebar filtros ── */}
       <SidebarFiltros

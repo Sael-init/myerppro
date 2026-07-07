@@ -20,8 +20,8 @@ interface ActionMenuProps {
     onView:           () => void;
     onValidarSunat?:  () => void;
     onBoletear?:      () => void;
-    onImprimir?:      () => void;
-    onDescargar?:     () => void;
+    onImprimir?:  () => void;
+    onDescargar?: () => void;
     onTrazabilidad?:  () => void;
     isAnulado?:       boolean;
     label?:           string;

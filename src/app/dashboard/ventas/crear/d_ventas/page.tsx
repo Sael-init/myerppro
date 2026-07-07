@@ -30,6 +30,25 @@ const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierIn
     return { precio: det.precio_minimo_mayorista, min: det.precio_minimo_mayorista, tier: "mayorista" };
   return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
 };
+
+// Determina si una monedaId es soles (PEN / 001 / null)
+const isPenMoneda = (m?: string | null) => !m || m === "001" || m.toUpperCase() === "PEN";
+
+// Convierte un precio desde la moneda de la lista de precios a la moneda del documento.
+// tipoCambio = cuántos PEN vale 1 unidad de moneda extranjera (ej: 3.75 para USD).
+const convertirPrecioLP = (
+  precio: number,
+  monedaLP: string | null | undefined,
+  monedaDoc: string,
+  tipoCambio: number,
+): number => {
+  if (precio <= 0) return precio;
+  const lpEsPen  = isPenMoneda(monedaLP);
+  const docEsPen = isPenMoneda(monedaDoc);
+  if (lpEsPen === docEsPen) return precio;                                              // misma moneda
+  if (lpEsPen && !docEsPen) return Math.round((precio / Math.max(tipoCambio, 0.001)) * 1e6) / 1e6; // PEN → otra
+  return Math.round(precio * tipoCambio * 1e6) / 1e6;                                  // otra → PEN
+};
 import ClienteFormModal from "@/app/dashboard/clientes/components/ClienteFormModal";
 
 import type {
@@ -707,17 +726,22 @@ function CrearDocumentoVentaContent() {
       const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
       if (det) {
         const cantidadActual = (nuevoDetalle as any).cantidad ?? 1;
-        const tierInfo = calcPrecioTier(det, cantidadActual);
-        setPrecioLimitesNuevo({ min: tierInfo.min, max: tierInfo.min });
+        const tierInfo   = calcPrecioTier(det, cantidadActual);
+        const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+        const monedaDoc  = (formData as any).monedaId ?? "001";
+        const tipoCambio = (formData as any).tipoCambio ?? 1;
+        const precioConv = convertirPrecioLP(tierInfo.precio, monedaLP, monedaDoc, tipoCambio);
+        const minConv    = convertirPrecioLP(tierInfo.min,    monedaLP, monedaDoc, tipoCambio);
+        setPrecioLimitesNuevo({ min: minConv, max: minConv });
         setPrecioTierLabel(tierInfo.tier);
-        setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}) }));
+        setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId, ...(precioConv > 0 ? { precio: precioConv } : {}) }));
       } else {
         setPrecioLimitesNuevo(null);
         setPrecioTierLabel(null);
         setNuevoDetalle((prev) => ({ ...(prev as any), presentacionId }));
       }
     },
-    [listaPrecioDetalles, nuevoDetalle, (formData as any).monedaId]
+    [listaPrecioDetalles, listasPrecios, selectedListaId, nuevoDetalle, (formData as any).monedaId, (formData as any).tipoCambio]
   );
 
   const selectedFormaPago = useMemo(
@@ -1637,10 +1661,26 @@ function CrearDocumentoVentaContent() {
                 {listasPrecios.map((lp) => (
                   <option key={lp.listaprecioId} value={lp.listaprecioId}>
                     {lp.descripcion || lp.codigo_lista}
+                    {lp.moneda?.abreviatura ? ` · ${lp.moneda.abreviatura}` : ""}
                   </option>
                 ))}
               </select>
             )}
+            {/* Badge: conversión activa entre moneda de LP y moneda del documento */}
+            {(() => {
+              const lp      = listasPrecios.find((l) => l.listaprecioId === selectedListaId);
+              const monedaLP  = lp?.monedaId;
+              const monedaDoc = (formData as any).monedaId ?? "001";
+              const tc        = (formData as any).tipoCambio ?? 1;
+              if (!lp || isPenMoneda(monedaLP) === isPenMoneda(monedaDoc)) return null;
+              const abrevLP  = lp.moneda?.abreviatura ?? (isPenMoneda(monedaLP) ? "PEN" : monedaLP);
+              const abrevDoc = isPenMoneda(monedaDoc) ? "PEN" : (monedaDoc ?? "").toUpperCase();
+              return (
+                <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-2 py-1 whitespace-nowrap">
+                  LP: {abrevLP} → {abrevDoc} · TC {Number(tc).toFixed(3)}
+                </span>
+              );
+            })()}
             {(nuevoDetalle as any).bienId && (
               <button
                 type="button"
@@ -1802,10 +1842,15 @@ function CrearDocumentoVentaContent() {
                         const nuevaCantidad = parseFloat(e.target.value) || 0;
                         const det = listaPrecioDetalles.find((d) => d.presentacionId === (nuevoDetalle as any).presentacionId);
                         if (det) {
-                          const tierInfo = calcPrecioTier(det, nuevaCantidad);
-                          setPrecioLimitesNuevo({ min: tierInfo.min, max: tierInfo.min });
+                          const tierInfo   = calcPrecioTier(det, nuevaCantidad);
+                          const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+                          const monedaDoc  = (formData as any).monedaId ?? "001";
+                          const tipoCambio = (formData as any).tipoCambio ?? 1;
+                          const precioConv = convertirPrecioLP(tierInfo.precio, monedaLP, monedaDoc, tipoCambio);
+                          const minConv    = convertirPrecioLP(tierInfo.min,    monedaLP, monedaDoc, tipoCambio);
+                          setPrecioLimitesNuevo({ min: minConv, max: minConv });
                           setPrecioTierLabel(tierInfo.tier);
-                          setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: nuevaCantidad, precio: tierInfo.precio }));
+                          setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: nuevaCantidad, precio: precioConv }));
                         } else {
                           setNuevoDetalle((prev) => ({ ...(prev as any), cantidad: nuevaCantidad }));
                         }

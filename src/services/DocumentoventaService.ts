@@ -35,6 +35,21 @@ class DocumentoVentaService {
 
   // ── Listados paginados ──────────────────────────────────────────────────────
 
+  /** Mapea fechaDesde/fechaHasta -> fechaInicio/fechaFin (formato esperado por el SP) y descarta vacíos */
+  private buildFiltersParam(filters?: FiltrosDocumentoVenta): string | undefined {
+    if (!filters) return undefined;
+    const cleaned: Record<string, any> = {};
+    let hasData = false;
+    Object.entries(filters).forEach(([key, val]) => {
+      if (Array.isArray(val) ? val.length > 0 : val !== undefined && val !== null && val !== '') {
+        const mappedKey = key === 'fechaDesde' ? 'fechaInicio' : key === 'fechaHasta' ? 'fechaFin' : key;
+        cleaned[mappedKey] = val;
+        hasData = true;
+      }
+    });
+    return hasData ? JSON.stringify(cleaned) : undefined;
+  }
+
   async getByEmpresa(
     empresaId: string,
     page = 1,
@@ -46,19 +61,8 @@ class DocumentoVentaService {
       const params: Record<string, any> = { page, pageSize };
       if (search?.trim()) params.search = search.trim();
 
-      if (filters) {
-        const cleaned: Record<string, any> = {};
-        let hasData = false;
-        Object.entries(filters).forEach(([key, val]) => {
-          if (Array.isArray(val) ? val.length > 0 : val !== undefined && val !== null && val !== '') {
-            // El SP espera fechaInicio/fechaFin, el frontend usa fechaDesde/fechaHasta
-            const mappedKey = key === 'fechaDesde' ? 'fechaInicio' : key === 'fechaHasta' ? 'fechaFin' : key;
-            cleaned[mappedKey] = val;
-            hasData = true;
-          }
-        });
-        if (hasData) params.filters = JSON.stringify(cleaned);
-      }
+      const filtersParam = this.buildFiltersParam(filters);
+      if (filtersParam) params.filters = filtersParam;
 
       const { data: api } = await apiClient.get(`${this.base}/empresa/${empresaId}`, { params });
       // El backend hace Ok(ApiResponse.SuccessPaginated(...)), lo que genera doble-envoltura:
@@ -114,6 +118,77 @@ class DocumentoVentaService {
       };
     } catch (err: any) {
       throw new Error(err.response?.data?.message ?? 'Error al cargar documentos de venta');
+    }
+  }
+
+  /** Documentos con condicionPago GRATUITO (bonificaciones) */
+  async getBonificacionesByEmpresa(
+    empresaId: string,
+    page = 1,
+    pageSize = 20,
+    search?: string,
+    filters?: FiltrosDocumentoVenta,
+    requiereSaldoPendiente = false,
+    esSalidaConsignacion = false,
+    soloStock = false
+  ): Promise<PaginatedResult> {
+    try {
+      const params: Record<string, any> = {
+        page, pageSize, requiereSaldoPendiente, esSalidaConsignacion, soloStock,
+      };
+      if (search?.trim()) params.search = search.trim();
+
+      const filtersParam = this.buildFiltersParam(filters);
+      if (filtersParam) params.filters = filtersParam;
+
+      const { data: api } = await apiClient.get(`${this.base}/empresa/${empresaId}/bonificaciones`, { params });
+      const payload = api.value ?? api;
+      return {
+        data: payload.data ?? [],
+        meta: {
+          totalRecords: payload.meta?.totalRecords ?? 0,
+          totalPages:   payload.meta?.totalPages   ?? 1,
+          currentPage:  payload.meta?.currentPage  ?? page,
+          pageSize:     payload.meta?.pageSize      ?? pageSize,
+        },
+      };
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al cargar bonificaciones');
+    }
+  }
+
+  /** Notas de crédito con saldo pendiente */
+  async getNotasCreditoPendientesByEmpresa(
+    empresaId: string,
+    page = 1,
+    pageSize = 20,
+    search?: string,
+    filters?: FiltrosDocumentoVenta,
+    soloStock = false
+  ): Promise<PaginatedResult> {
+    try {
+      const params: Record<string, any> = { page, pageSize, soloStock };
+      if (search?.trim()) params.search = search.trim();
+
+      const filtersParam = this.buildFiltersParam(filters);
+      if (filtersParam) params.filters = filtersParam;
+
+      const { data: api } = await apiClient.get(
+        `${this.base}/empresa/${empresaId}/notas-credito-pendientes`,
+        { params }
+      );
+      const payload = api.value ?? api;
+      return {
+        data: payload.data ?? [],
+        meta: {
+          totalRecords: payload.meta?.totalRecords ?? 0,
+          totalPages:   payload.meta?.totalPages   ?? 1,
+          currentPage:  payload.meta?.currentPage  ?? page,
+          pageSize:     payload.meta?.pageSize      ?? pageSize,
+        },
+      };
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al cargar notas de crédito pendientes');
     }
   }
 
@@ -225,6 +300,61 @@ class DocumentoVentaService {
       return data;
     } catch (err: any) {
       throw new Error(err.response?.data?.message ?? 'Error al actualizar el documento de venta');
+    }
+  }
+
+  async actualizarDetalle(
+    documentoventaId: string,
+    item: number,
+    detalle: Record<string, any>
+  ): Promise<any> {
+    try {
+      const { data } = await apiClient.put(
+        `${this.base}/${documentoventaId}/detalle/${item}`,
+        detalle
+      );
+      return data;
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al actualizar el detalle del documento de venta');
+    }
+  }
+
+  /** Valida/reenvía un documento de venta ya existente a SUNAT vía MiFact */
+  async enviarMifact(documentoventaId: string): Promise<{
+    isSuccess: boolean;
+    message?: string;
+    estadoDocumento?: string;
+    sunatCode?: string;
+    sunatDescription?: string;
+    codigoHash?: string;
+    url?: string;
+    errors?: string;
+  }> {
+    try {
+      const { data: api } = await apiClient.post(`${this.base}/${documentoventaId}/enviar-mifact`);
+      const payload = api.data ?? api;
+
+      // El backend puede devolver el objeto crudo de MiFact (snake_case) o uno
+      // ya normalizado (camelCase/PascalCase) según el resultado del servicio.
+      const errors = payload.errors ?? payload.Errors ?? payload.sunatErrors ?? undefined;
+
+      return {
+        isSuccess:        payload.isSuccess ?? payload.IsSuccess ?? !errors,
+        message:          payload.message ?? payload.Message ?? undefined,
+        estadoDocumento:  payload.estadoDocumento ?? payload.estado_documento ?? undefined,
+        sunatCode:        payload.sunatCode ?? payload.sunat_responsecode ?? undefined,
+        sunatDescription: payload.sunatDescription ?? payload.sunat_descripcion ?? undefined,
+        codigoHash:       payload.codigoHash ?? payload.codigo_hash ?? undefined,
+        url:              payload.url ?? payload.Url ?? undefined,
+        errors,
+      };
+    } catch (err: any) {
+      const apiMessage =
+        err.response?.data?.message ??
+        err.response?.data?.error   ??
+        err.response?.data?.title   ??
+        (typeof err.response?.data === 'string' ? err.response.data : null);
+      throw new Error(apiMessage ?? 'Error al enviar el documento a SUNAT');
     }
   }
 
@@ -519,7 +649,7 @@ async actualizarGuiaRemision(
 
   async getTrazabilidad(documentoventaId: string): Promise<any> {
     try {
-      const { data } = await apiClient.get(`/Trazabilidad/trazabilidad/DOCUMENTOVENTA/${documentoventaId}`);
+      const { data } = await apiClient.get(`${this.base}/trazabilidad/DOCUMENTOVENTA/${documentoventaId}`);
       return data.data ?? data;
     } catch (err: any) {
       throw new Error(err.response?.data?.message ?? 'Error al obtener trazabilidad');
@@ -528,7 +658,7 @@ async actualizarGuiaRemision(
 
   async descargarArchivosMifact(documentoventaId: string, empresaId: string): Promise<any> {
     try {
-      const { data } = await apiClient.get(`${this.base}/${documentoventaId}/descargar-mifact`, {
+      const { data } = await apiClient.post(`${this.base}/${documentoventaId}/descargar-archivos`, null, {
         params: { empresaId },
       });
       return data.data ?? data;

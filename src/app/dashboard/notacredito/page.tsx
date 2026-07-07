@@ -158,8 +158,22 @@ export default function NotaCreditoPage() {
   }, [handleAction]);
 
   const handleValidarSunat = useCallback(async (id: string) => {
-    toast.info(`Validar SUNAT ${id} — próximamente`);
-  }, []);
+    try {
+      toast.loading("Validando documento en SUNAT...", { id: "validar-sunat" });
+      const resultado = await documentoVentaService.enviarMifact(id);
+      if (resultado.isSuccess && !resultado.errors) {
+        toast.success(
+          resultado.sunatDescription || resultado.message || "Documento validado en SUNAT correctamente",
+          { id: "validar-sunat" }
+        );
+        fetchData(meta.currentPage, debouncedSearch, filters);
+      } else {
+        toast.error(resultado.errors || resultado.message || "SUNAT rechazó el documento", { id: "validar-sunat" });
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Error al validar el documento en SUNAT", { id: "validar-sunat" });
+    }
+  }, [fetchData, meta.currentPage, debouncedSearch, filters]);
 
   const handleImprimir = useCallback(async (id: string) => {
     try {

@@ -25,7 +25,9 @@ import {
   IconClock,
   IconMoodSmile,
   IconPrinter,
+  IconRoute,
 } from "@tabler/icons-react";
+import TrazabilidadPanel from "@/components/shared/TrazabilidadPanel";
 import { toast } from "sonner";
 import { generarHtmlCotizacion } from "@/utils/printCotizacion";
 
@@ -157,15 +159,16 @@ const confirmConfig: Record<ConfirmType, { title: string; msg: string; btnLabel:
 
 // ── ActionMenu ───────────────────────────────────────────────────────────────
 interface CotizacionMenuProps {
-  row:         Cotizacion;
-  onView:      () => void;
-  onEdit?:     () => void;
-  onAnular?:   () => void;
-  onDelete?:   () => void;
-  onImprimir?: () => void;
+  row:              Cotizacion;
+  onView:           () => void;
+  onTrazabilidad:   () => void;
+  onEdit?:          () => void;
+  onAnular?:        () => void;
+  onDelete?:        () => void;
+  onImprimir?:      () => void;
 }
 
-const CotizacionAccionesMenu = ({ row, onView, onEdit, onAnular, onDelete, onImprimir }: CotizacionMenuProps) => {
+const CotizacionAccionesMenu = ({ row, onView, onTrazabilidad, onEdit, onAnular, onDelete, onImprimir }: CotizacionMenuProps) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative inline-block">
@@ -192,6 +195,14 @@ const CotizacionAccionesMenu = ({ row, onView, onEdit, onAnular, onDelete, onImp
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
             </svg>
             Ver detalle
+          </button>
+
+          <button
+            onClick={() => { setOpen(false); onTrazabilidad(); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-indigo-700 hover:bg-indigo-50 transition-colors"
+          >
+            <IconRoute size={14} />
+            Trazabilidad
           </button>
 
           {onEdit && (
@@ -276,8 +287,10 @@ export default function CotizacionesPage() {
 
   const [tempFilters, setTempFilters]     = useState<FiltrosCotizacion>(initialFilters);
   const [showFilters, setShowFilters]     = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [viewCotId, setViewCotId]         = useState<string | null>(null);
+  const [showViewModal, setShowViewModal]       = useState(false);
+  const [viewCotId, setViewCotId]               = useState<string | null>(null);
+  const [showTrazabilidad, setShowTrazabilidad] = useState(false);
+  const [trazabilidadId, setTrazabilidadId]     = useState<string | null>(null);
   const [showLeyenda, setShowLeyenda]     = useState(false);
 
   const [confirmOpen, setConfirmOpen]       = useState(false);
@@ -478,6 +491,7 @@ export default function CotizacionesPage() {
             <CotizacionAccionesMenu
               row={row}
               onView={() => { if (!row.cotizacionventaId) return; setViewCotId(row.cotizacionventaId); setShowViewModal(true); }}
+              onTrazabilidad={() => { if (!row.cotizacionventaId) return; setTrazabilidadId(row.cotizacionventaId); setShowTrazabilidad(true); }}
               onEdit={esRegistrado   ? () => handleEdit(row)              : undefined}
               onAnular={esRegistrado ? () => openConfirm("anular", row)  : undefined}
               onDelete={esAnulado    ? () => openConfirm("delete", row)  : undefined}
@@ -552,14 +566,24 @@ export default function CotizacionesPage() {
         </button>
       </div>
 
-      {/* ── Tabla ── */}
-      <DataTable
-        columns={columns}
-        data={data}
-        loading={loading}
-        meta={meta}
-        onPageChange={fetchData}
-      />
+      {/* ── Tabla / Panel Trazabilidad ── */}
+      {showTrazabilidad ? (
+        <div className="animate-in slide-in-from-right-4 duration-300">
+          <TrazabilidadPanel
+            tabla="COTIZACION"
+            id={trazabilidadId}
+            onClose={() => { setShowTrazabilidad(false); setTrazabilidadId(null); }}
+          />
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={loading}
+          meta={meta}
+          onPageChange={fetchData}
+        />
+      )}
 
       {/* ── Sidebar filtros ── */}
       <SidebarFiltros

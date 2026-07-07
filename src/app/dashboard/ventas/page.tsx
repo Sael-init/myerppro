@@ -6,7 +6,7 @@ import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import documentoVentaService from "@/services/DocumentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
-import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
+import { generarHtmlBoleta, generarHtmlBoletaInterna } from "@/utils/printDocumentoVenta";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -14,12 +14,13 @@ import DataTable from "@/components/shared/DataTable";
 import SidebarFiltros from "@/components/filter/FiltrosAvanzados";
 import DateInput from "@/components/forms/DateInput";
 import DocumentoVentaViewModal from "./components/VentasViewModal";
-import TrazabilidadModal from "./components/TrazabilidadModal";
+import TrazabilidadPanel from "@/components/shared/TrazabilidadPanel";
 import ActionMenu from "@/components/shared/ActionMenu";
 
 import {
   IconRefresh, IconSearch, IconFilter,
   IconCalendar, IconUser, IconPlus, IconReceipt,
+  IconPrinter, IconClipboardList, IconX,
 } from "@tabler/icons-react";
 
 // ─── Helpers estáticos (fuera del componente) ────────────────────────────────
@@ -117,6 +118,8 @@ export default function DocumentosVentaPage() {
   const [serieBoleteo,       setSerieBoleteo]        = useState("");
   const [loadingBoleteo,     setLoadingBoleteo]      = useState(false);
   const [loadingPrint,       setLoadingPrint]        = useState(false);
+  const [showPrintChooser,   setShowPrintChooser]    = useState(false);
+  const [printChooserDocId,  setPrintChooserDocId]   = useState<string | null>(null);
 
   const debouncedSearch = useDebounce(searchTerm, 500);
 
@@ -162,8 +165,22 @@ export default function DocumentosVentaPage() {
   }, [handleAction]);
 
   const handleValidarSunat = useCallback(async (id: string) => {
-    toast.info(`Validar SUNAT ${id} — próximamente`);
-  }, []);
+    try {
+      toast.loading("Validando documento en SUNAT...", { id: "validar-sunat" });
+      const resultado = await documentoVentaService.enviarMifact(id);
+      if (resultado.isSuccess && !resultado.errors) {
+        toast.success(
+          resultado.sunatDescription || resultado.message || "Documento validado en SUNAT correctamente",
+          { id: "validar-sunat" }
+        );
+        fetchData(meta.currentPage, debouncedSearch, filters);
+      } else {
+        toast.error(resultado.errors || resultado.message || "SUNAT rechazó el documento", { id: "validar-sunat" });
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Error al validar el documento en SUNAT", { id: "validar-sunat" });
+    }
+  }, [fetchData, meta.currentPage, debouncedSearch, filters]);
 
   const handleBoletear = useCallback((id: string) => {
     setBoleteoDocumentoId(id);
@@ -194,14 +211,22 @@ export default function DocumentosVentaPage() {
     }
   }, []);
 
-  const handleImprimir = useCallback(async (id: string) => {
+  const handleImprimir = useCallback((id: string) => {
+    setPrintChooserDocId(id);
+    setShowPrintChooser(true);
+  }, []);
+
+  const ejecutarImpresion = useCallback(async (tipo: "estandar" | "interno") => {
+    if (!printChooserDocId) return;
+    setShowPrintChooser(false);
     try {
       setLoadingPrint(true);
-      const response = await documentoVentaService.getById(id);
+      const response = await documentoVentaService.getById(printChooserDocId);
       const doc      = (response as any)?.data ?? response;
-      const logoUrl  = `${window.location.origin}/image/logo.png`;
-      const html     = generarHtmlBoleta(doc, logoUrl);
-      const win      = window.open("", "_blank", "width=960,height=720");
+      const html     = tipo === "estandar"
+        ? generarHtmlBoleta(doc, "")
+        : generarHtmlBoletaInterna(doc);
+      const win = window.open("", "_blank", "width=960,height=720");
       if (!win) {
         toast.error("El navegador bloqueó la ventana emergente. Habilita pop-ups para este sitio.");
         return;
@@ -209,12 +234,11 @@ export default function DocumentosVentaPage() {
       win.document.write(html);
       win.document.close();
     } catch (err: any) {
-      console.error("[handleImprimir]", err);
       toast.error(`Error al generar la impresión: ${err.message}`);
     } finally {
       setLoadingPrint(false);
     }
-  }, []);
+  }, [printChooserDocId]);
 
   const handleConfirmarBoleteo = useCallback(async () => {
     if (!boleteoDocumentoId || !serieBoleteo.trim()) {
@@ -467,14 +491,24 @@ export default function DocumentosVentaPage() {
         </button>
       </div>
 
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        data={displayData}
-        loading={loading}
-        meta={meta}
-        onPageChange={(page: number) => fetchData(page, debouncedSearch, filters)}
-      />
+      {/* Table + Panel trazabilidad */}
+      {showTrazabilidad ? (
+        <div className="animate-in slide-in-from-right-4 duration-300">
+          <TrazabilidadPanel
+            tabla="DOCUMENTOVENTA"
+            id={trazabilidadId}
+            onClose={() => { setShowTrazabilidad(false); setTrazabilidadId(null); }}
+          />
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={displayData}
+          loading={loading}
+          meta={meta}
+          onPageChange={(page: number) => fetchData(page, debouncedSearch, filters)}
+        />
+      )}
 
       {/* Sidebar Filtros */}
       <SidebarFiltros
@@ -563,19 +597,65 @@ export default function DocumentosVentaPage() {
         </div>
       </SidebarFiltros>
 
-      {/* Modal Trazabilidad */}
-      <TrazabilidadModal
-        documentoventaId={trazabilidadId}
-        isOpen={showTrazabilidad}
-        onClose={() => { setShowTrazabilidad(false); setTrazabilidadId(null); }}
-      />
-
       {/* Modal Ver */}
       <DocumentoVentaViewModal
         documentoventaId={viewDocumentoId}
         isOpen={showViewModal}
         onClose={() => { setShowViewModal(false); setViewDocumentoId(null); }}
       />
+
+      {/* Modal Imprimir — elegir formato */}
+      {showPrintChooser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <IconPrinter size={20} className="text-sky-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-800 text-base">Formato de impresión</h2>
+                  <p className="text-xs text-slate-500">Selecciona cómo imprimir</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPrintChooser(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => ejecutarImpresion("estandar")}
+                disabled={loadingPrint}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-slate-200
+                           hover:border-sky-400 hover:bg-sky-50 transition-all disabled:opacity-50 group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-slate-100 group-hover:bg-sky-100 flex items-center justify-center transition-colors">
+                  <IconPrinter size={20} className="text-slate-500 group-hover:text-sky-600" />
+                </div>
+                <span className="font-bold text-sm text-slate-700 group-hover:text-sky-700">Estándar</span>
+                <span className="text-[11px] text-slate-400 text-center leading-tight">Para enviar al cliente</span>
+              </button>
+
+              <button
+                onClick={() => ejecutarImpresion("interno")}
+                disabled={loadingPrint}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-slate-200
+                           hover:border-rose-400 hover:bg-rose-50 transition-all disabled:opacity-50 group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-slate-100 group-hover:bg-rose-100 flex items-center justify-center transition-colors">
+                  <IconClipboardList size={20} className="text-slate-500 group-hover:text-rose-600" />
+                </div>
+                <span className="font-bold text-sm text-slate-700 group-hover:text-rose-700">Interno</span>
+                <span className="text-[11px] text-slate-400 text-center leading-tight">Uso interno</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Boleteo */}
       {showBoleteoModal && (

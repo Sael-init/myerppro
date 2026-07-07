@@ -36,6 +36,22 @@ const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierIn
   return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
 };
 
+const isPenMoneda = (m?: string | null) => !m || m === "001" || m.toUpperCase() === "PEN";
+
+const convertirPrecioLP = (
+  precio: number,
+  monedaLP: string | null | undefined,
+  monedaDoc: string,
+  tipoCambio: number,
+): number => {
+  if (precio <= 0) return precio;
+  const lpEsPen  = isPenMoneda(monedaLP);
+  const docEsPen = isPenMoneda(monedaDoc);
+  if (lpEsPen === docEsPen) return precio;
+  if (lpEsPen && !docEsPen) return Math.round((precio / Math.max(tipoCambio, 0.001)) * 1e6) / 1e6;
+  return Math.round(precio * tipoCambio * 1e6) / 1e6;
+};
+
 import type { PedidoVenta, PedidoVentaDetalle } from "@/types/pedidoventa.type";
 import type { CondicionPago }                   from "@/types/condicionpago.types";
 import type { FormasPago }                      from "@/types/formaspago.types";
@@ -699,17 +715,22 @@ export default function CrearPedidoVentaPage() {
     (presentacionId: string) => {
       const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
       if (det) {
-        const tier = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
-        setPrecioLimites({ min: tier.min, max: tier.min });
+        const tier       = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+        const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+        const monedaDoc  = form.monedaId ?? "001";
+        const tipoCambio = Number(form.tipo_cambio) || 1;
+        const precioConv = convertirPrecioLP(tier.precio, monedaLP, monedaDoc, tipoCambio);
+        const minConv    = convertirPrecioLP(tier.min,    monedaLP, monedaDoc, tipoCambio);
+        setPrecioLimites({ min: minConv, max: minConv });
         setPrecioTierLabel(tier.tier);
-        setNuevoDetalle((prev) => ({ ...prev, presentacionId, ...(tier.precio > 0 ? { precio: tier.precio } : {}) }));
+        setNuevoDetalle((prev) => ({ ...prev, presentacionId, ...(precioConv > 0 ? { precio: precioConv } : {}) }));
       } else {
         setPrecioLimites(null);
         setPrecioTierLabel(null);
         setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
       }
     },
-    [listaPrecioDetalles, nuevoDetalle.cantidad]
+    [listaPrecioDetalles, listasPrecios, selectedListaId, nuevoDetalle.cantidad, form.monedaId, form.tipo_cambio]
   );
 
   const handleCantidadNuevoChange = useCallback(
@@ -720,15 +741,20 @@ export default function CrearPedidoVentaPage() {
       }
       const det = listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId);
       if (det) {
-        const tier = calcPrecioTier(det, cantidad);
-        setPrecioLimites({ min: tier.min, max: tier.min });
+        const tier       = calcPrecioTier(det, cantidad);
+        const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+        const monedaDoc  = form.monedaId ?? "001";
+        const tipoCambio = Number(form.tipo_cambio) || 1;
+        const precioConv = convertirPrecioLP(tier.precio, monedaLP, monedaDoc, tipoCambio);
+        const minConv    = convertirPrecioLP(tier.min,    monedaLP, monedaDoc, tipoCambio);
+        setPrecioLimites({ min: minConv, max: minConv });
         setPrecioTierLabel(tier.tier);
-        setNuevoDetalle((prev) => ({ ...prev, cantidad, precio: tier.precio }));
+        setNuevoDetalle((prev) => ({ ...prev, cantidad, precio: precioConv }));
       } else {
         setNuevoDetalle((prev) => ({ ...prev, cantidad }));
       }
     },
-    [listaPrecioDetalles, nuevoDetalle.presentacionId]
+    [listaPrecioDetalles, listasPrecios, selectedListaId, nuevoDetalle.presentacionId, form.monedaId, form.tipo_cambio]
   );
 
   // ── Handlers generales ─────────────────────────────────────────────────────
@@ -1431,10 +1457,26 @@ export default function CrearPedidoVentaPage() {
               {listasPrecios.map((lp) => (
                 <option key={lp.listaprecioId} value={lp.listaprecioId}>
                   {lp.descripcion || lp.codigo_lista}
+                  {lp.moneda?.abreviatura ? ` · ${lp.moneda.abreviatura}` : ""}
                 </option>
               ))}
             </select>
           )}
+          {/* Badge: conversión activa entre moneda de LP y moneda del pedido */}
+          {(() => {
+            const lp       = listasPrecios.find((l) => l.listaprecioId === selectedListaId);
+            const monedaLP  = lp?.monedaId;
+            const monedaDoc = form.monedaId ?? "001";
+            const tc        = Number(form.tipo_cambio) || 1;
+            if (!lp || isPenMoneda(monedaLP) === isPenMoneda(monedaDoc)) return null;
+            const abrevLP  = lp.moneda?.abreviatura ?? (isPenMoneda(monedaLP) ? "PEN" : monedaLP);
+            const abrevDoc = isPenMoneda(monedaDoc) ? "PEN" : (monedaDoc ?? "").toUpperCase();
+            return (
+              <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-2 py-1 whitespace-nowrap">
+                LP: {abrevLP} → {abrevDoc} · TC {tc.toFixed(3)}
+              </span>
+            );
+          })()}
           {nuevoDetalle.bienId && (
             <button
               type="button"
