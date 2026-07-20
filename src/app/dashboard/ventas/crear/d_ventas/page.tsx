@@ -7,6 +7,9 @@ import { useCrearStore } from "../store";
 import ImportarPedidoModal, {
   type PedidoVentaRow,
 } from "../../components/ImportarPedidoModal";
+import AnticiposDisponiblesPanel from "../../components/AnticiposDisponiblesPanel";
+import { notaSalidaService } from "@/services/notaSalidaService";
+import { buildNotaSalidaPayload } from "../notaSalidaHelper";
 
 import documentoVentaService from "@/services/DocumentoventaService";
 import condicionPagoService from "@/services/condicionpagoService";
@@ -58,6 +61,7 @@ import type {
   FormDropdownsDocumentoVenta,
   KeyValueOption,
   BienOption,
+  DocumentoVenta,
 } from "@/types/Documentoventa.types";
 import type { Producto } from "@/types/producto.types";                // ← NUEVO
 import type { GuiaRemisionPayload, GuiaRemisionDetalle } from "@/types/guiaRemision.types";
@@ -89,6 +93,10 @@ import {
   IconDeviceFloppy,
   IconRefresh,
   IconUserPlus,
+  IconFileDescription,
+  IconListDetails,
+  IconPackageExport,
+  IconCashBanknote,
 } from "@tabler/icons-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +110,10 @@ const CUENTA_USUARIO_ID = "CU0002";
 
 const TIPO_SOLO_RUC = ["X028"];
 const TIPO_SOLO_DNI = ["X007", "X077"];
+
+// Bien usado para emitir un documento COMO anticipo (ANTICIPO AFECTO). Cuando el checkbox
+// "es anticipo" está marcado, el detalle solo debe poder cargar este producto.
+const BIEN_ANTICIPO_AFECTO = "00001399";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Componentes auxiliares
@@ -348,11 +360,14 @@ function CrearDocumentoVentaContent() {
   const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
   const [modalImportar,     setModalImportar]     = useState(false);
   const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
+  const [modalAnticipos,     setModalAnticipos]     = useState(false);
+  const [anticiposAplicados, setAnticiposAplicados] = useState<DocumentoVenta[]>([]);
   const [pedidoImportadoId,       setPedidoImportadoId]       = useState<string | null>(null);
   const [pedidoOriginalItemCount, setPedidoOriginalItemCount] = useState<number>(0);
   const [clienteDocIdentId,       setClienteDocIdentId]       = useState<string | null>(null);
   const [editEstado,              setEditEstado]              = useState<string | null>(null);
   const [clienteDDLKey,           setClienteDDLKey]           = useState(0);
+  const [activeTab,               setActiveTab]               = useState<"general" | "detalle">("general");
 
   // ── Cache de productos: bienId → Producto completo (con detraccionbienserviceId real) ──
   const [bienCache, setBienCache] = useState<Record<string, Producto>>({});
@@ -404,6 +419,7 @@ function CrearDocumentoVentaContent() {
     setNuevoDetalle({ ...emptyDetalle });
     setPedidoImportadoId(null);
     setClienteDocIdentId(null);
+    setAnticiposAplicados([]);
     updateField("pedidoventaId", null);
     toast.success("Formulario limpiado");
   }, [resetAll]);
@@ -413,6 +429,14 @@ function CrearDocumentoVentaContent() {
     setClienteDDLKey((k) => k + 1);
     toast.success("Cliente registrado — ya puedes buscarlo en el campo Cliente");
   }, []);
+
+  // Si cambia el cliente, los anticipos aplicados (ligados al cliente anterior) dejan de ser válidos
+  useEffect(() => {
+    setAnticiposAplicados((prev) =>
+      prev.filter((a) => a.clienteId === (formData as any).clienteId)
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(formData as any).clienteId]);
 
   // ── Carga catálogos (series, monedas, tipos doc, presentaciones, etc.) ────────
   // getFormDropdowns sigue siendo usado para TODO excepto datos de detracción del bien,
@@ -705,6 +729,13 @@ function CrearDocumentoVentaContent() {
   // ── Bienes y presentaciones disponibles según lista de precios ─────────────
   const bienesDisponibles = useMemo(() => {
     if (!catalogs?.bienes) return [];
+    // Si el documento se está emitiendo COMO anticipo, el detalle solo admite el bien
+    // ANTICIPO AFECTO — no tiene sentido facturar un anticipo con productos normales.
+    if ((formData as any).esAnticipo) {
+      return catalogs.bienes
+        .filter((b) => String(b.key) === BIEN_ANTICIPO_AFECTO)
+        .map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
+    }
     const base = catalogs.bienes.map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
     if (listaPrecioDetalles.length === 0) return base;
     const presIds = new Set(listaPrecioDetalles.map((d) => d.presentacionId));
@@ -712,7 +743,7 @@ function CrearDocumentoVentaContent() {
       const pres = catalogs.presentaciones?.find((g) => g.bienId === b.key)?.items ?? [];
       return (pres as any[]).some((p) => presIds.has(String(p.key)));
     });
-  }, [catalogs, listaPrecioDetalles]);
+  }, [catalogs, listaPrecioDetalles, (formData as any).esAnticipo]);
 
   const presentacionOptsNuevo = useMemo(() => {
     if (presentacionesNuevo.length === 0) return [];
@@ -803,7 +834,7 @@ function CrearDocumentoVentaContent() {
   }, [(formData as any).condicionPago, condicionesPago]);
 
   const totales = useMemo(() => {
-    let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0, gratuito = 0;
+    let valorventaAfecto = 0, valorventaExonerado = 0, igvTotal = 0, gratuito = 0;
     const esGratuita = isCondicionGratuita;
     (detalles as any[]).forEach((det: any) => {
       const subtotal = det.cantidad * det.precio - (det.descuentoProducto || 0);
@@ -814,18 +845,18 @@ function CrearDocumentoVentaContent() {
         valorventaAfecto += base;
         igvTotal         += subtotal - base;
       } else {
-        valorventaInafecto += subtotal;
+        valorventaExonerado += subtotal;
       }
     });
-    const total = valorventaAfecto + igvTotal + valorventaInafecto;
+    const total = valorventaAfecto + igvTotal + valorventaExonerado;
     return {
-      valorventaAfecto:   Math.round(valorventaAfecto   * 100) / 100,
-      valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
-      igv:                Math.round(igvTotal           * 100) / 100,
-      total:              Math.round(total              * 100) / 100,
-      gravado:            Math.round(valorventaAfecto   * 100) / 100,
-      exonerado:          Math.round(valorventaInafecto * 100) / 100,
-      gratuito:           Math.round(gratuito           * 100) / 100,
+      valorventaAfecto:     Math.round(valorventaAfecto   * 100) / 100,
+      valorventaExonerado:  Math.round(valorventaExonerado * 100) / 100,
+      igv:                  Math.round(igvTotal           * 100) / 100,
+      total:                Math.round(total              * 100) / 100,
+      gravado:              Math.round(valorventaAfecto   * 100) / 100,
+      exonerado:            Math.round(valorventaExonerado * 100) / 100,
+      gratuito:             Math.round(gratuito           * 100) / 100,
     };
   }, [detalles, isCondicionGratuita]);
 
@@ -833,6 +864,111 @@ function CrearDocumentoVentaContent() {
     if (!(formData as any).detraccion || !(formData as any).detraccionPorcentaje) return 0;
     return Math.round(totales.total * (((formData as any).detraccionPorcentaje || 0) / 100) * 100) / 100;
   }, [(formData as any).detraccion, (formData as any).detraccionPorcentaje, totales.total]);
+
+  // Reparto del anticipo aplicado entre "afecto" (base sin IGV), "IGV" y "exonerado", para
+  // poder descontarlo directamente de esas líneas del resumen en vez de mostrar un único
+  // descuento genérico sobre el total. Se toman los montos reales del propio anticipo
+  // (valorventa_afecto/igv/valorventa_exonerado, o su "saldo" si el backend ya trae el saldo
+  // disponible actualizado tras consumos previos) — NO se reconstruyen con una fórmula del
+  // 18%, porque el saldo disponible no es simplemente el total con IGV incluido.
+  // Solo es posible repartirlo sin ambigüedad cuando el detalle es enteramente gravado
+  // (o enteramente exonerado); si hay mezcla (o el detalle está vacío) se usa un único
+  // descuento sobre el total (total_base_anticipo / total del anticipo).
+  const anticipoSplit = useMemo(() => {
+    if (anticiposAplicados.length === 0) return { afectoBase: 0, igv: 0, exonerado: 0, esSplitApto: false };
+    const hasGravado   = totales.gravado   > 0;
+    const hasExonerado = totales.exonerado > 0;
+
+    if (hasGravado && !hasExonerado) {
+      const afectoBase = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0), 0);
+      const igv         = anticiposAplicados.reduce((acc, a: any) => acc + (a.igv ?? 0), 0);
+      return {
+        afectoBase: Math.round(afectoBase * 100) / 100,
+        igv:        Math.round(igv * 100) / 100,
+        exonerado:  0,
+        esSplitApto: true,
+      };
+    }
+    if (hasExonerado && !hasGravado) {
+      const exonerado = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0), 0);
+      return { afectoBase: 0, igv: 0, exonerado: Math.round(exonerado * 100) / 100, esSplitApto: true };
+    }
+    return { afectoBase: 0, igv: 0, exonerado: 0, esSplitApto: false };
+  }, [anticiposAplicados, totales.gravado, totales.exonerado]);
+
+  // Monto total del anticipo aplicado a este documento: la suma de las partes repartidas
+  // arriba, o (cuando la mezcla de ítems no permite repartirlo) el total del anticipo.
+  const totalAnticipoAplicado = useMemo(() => {
+    if (anticiposAplicados.length === 0) return null;
+    if (anticipoSplit.esSplitApto) {
+      return Math.round((anticipoSplit.afectoBase + anticipoSplit.igv + anticipoSplit.exonerado) * 100) / 100;
+    }
+    return Math.round(
+      anticiposAplicados.reduce((acc, a: any) => acc + (a.total_base_anticipo ?? a.total ?? 0), 0) * 100
+    ) / 100;
+  }, [anticiposAplicados, anticipoSplit]);
+
+  // Base (sin IGV) de los anticipos consumidos por este documento: afecto + exonerado.
+  // Cuando la mezcla de ítems no permite un reparto exacto (esSplitApto = false), se usa
+  // la base de cada anticipo (total_base_anticipo, que también se guarda sin IGV).
+  const totalBaseAnticipoConsumido = useMemo(() => {
+    if (anticiposAplicados.length === 0) return undefined;
+    if (anticipoSplit.esSplitApto) {
+      return Math.round((anticipoSplit.afectoBase + anticipoSplit.exonerado) * 100) / 100;
+    }
+    return Math.round(
+      anticiposAplicados.reduce(
+        (acc, a: any) => acc + (a.total_base_anticipo ?? (a.valorventa_afecto ?? 0) + (a.valorventa_exonerado ?? 0)),
+        0
+      ) * 100
+    ) / 100;
+  }, [anticiposAplicados, anticipoSplit]);
+
+  // Total final de la factura: el total calculado del detalle menos el anticipo aplicado.
+  // Este es el valor que se muestra como "Total" y el que se envía como total/saldo al backend.
+  const totalFacturaFinal = useMemo(() => {
+    return Math.round(Math.max(0, totales.total - (totalAnticipoAplicado ?? 0)) * 100) / 100;
+  }, [totales.total, totalAnticipoAplicado]);
+
+  // Valores netos (descontado el anticipo) para el encabezado de la factura: gravado, exonerado
+  // e IGV que realmente quedan por cobrar. El DETALLE (líneas del documento) no se toca — se
+  // envía tal cual, con los montos originales de cada ítem.
+  const totalesNetosAnticipo = useMemo(() => ({
+    valorventaAfecto:    Math.round(Math.max(0, totales.valorventaAfecto    - anticipoSplit.afectoBase) * 100) / 100,
+    valorventaExonerado: Math.round(Math.max(0, totales.valorventaExonerado - anticipoSplit.exonerado)  * 100) / 100,
+    igv:                 Math.round(Math.max(0, totales.igv                - anticipoSplit.igv)         * 100) / 100,
+  }), [totales, anticipoSplit]);
+
+  // Campos de encabezado propios de un documento emitido "como anticipo": la base
+  // (total_base_anticipo) y el saldo inicial disponible (afecto/exonerado) para
+  // aplicarse luego contra futuras facturas. Estos montos van SIN IGV (base imponible);
+  // el IGV se recalcula aparte al consumir el anticipo (ver anticipoSplit más arriba).
+  //
+  // Si en cambio este documento CONSUME uno o más anticipos existentes (factura normal con
+  // anticiposAplicados), totalBaseAnticipo lleva la suma de la base (sin IGV) de esos
+  // anticipos usados — no la base propia del documento.
+  const anticipoPayload = useMemo(() => {
+    const esAnticipo = !!(formData as any).esAnticipo;
+    return {
+      documentoComoAnticipo:  esAnticipo ? "SI" : "NO",
+      totalBaseAnticipo:      esAnticipo
+        ? Math.round((totales.valorventaAfecto + totales.valorventaExonerado) * 100) / 100
+        : totalBaseAnticipoConsumido,
+      anticipoSaldoAfecto:    esAnticipo ? totales.valorventaAfecto : undefined,
+      anticipoSaldoExonerado: esAnticipo ? totales.valorventaExonerado : undefined,
+      // Referencia al DV de anticipo que se está consumiendo con este documento. El campo del
+      // backend (documentoventa_referenciaId) es un único CHAR(12), así que solo se envía
+      // cuando hay exactamente un anticipo aplicado; con varios, se omite (ver aviso en el chat).
+      ...(anticiposAplicados.length === 1
+        ? { documentoventaReferenciaId: anticiposAplicados[0].documentoventaId }
+        : {}),
+      // IDs de todos los anticipos aplicados a este documento (campo backend: List<string> Anticipos).
+      // El backend lo declara no-nullable ([Required] implícito), así que hay que enviarlo
+      // siempre — vacío [] cuando no se aplica ningún anticipo (p.ej. al emitir el propio
+      // documento COMO anticipo) — nunca omitirlo del payload.
+      anticipos: anticiposAplicados.map((a) => a.documentoventaId),
+    };
+  }, [(formData as any).esAnticipo, totales, anticiposAplicados, totalBaseAnticipoConsumido]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Validaciones
@@ -862,12 +998,13 @@ function CrearDocumentoVentaContent() {
     try {
       const dto = {
         ...(formData as any),
-        valorventaAfecto:   totales.valorventaAfecto,
-        valorventaInafecto: totales.valorventaInafecto,
-        igv:                totales.igv,
-        total:              totales.total,
-        saldo:              totales.total,
+        valorventaAfecto:   totalesNetosAnticipo.valorventaAfecto,
+        valorventaExonerado: totalesNetosAnticipo.valorventaExonerado,
+        igv:                totalesNetosAnticipo.igv,
+        total:              totalFacturaFinal,
+        saldo:              totalFacturaFinal,
         detraccionMonto:    (formData as any).detraccion ? detraccionMonto : 0,
+        ...anticipoPayload,
         detalles:           detalles as any,
       };
       const response = await documentoVentaService.update(editId!, dto);
@@ -963,17 +1100,21 @@ function CrearDocumentoVentaContent() {
     try {
       const combinedDto = {
         ...(formData as any),
-        valorventaAfecto:   totales.valorventaAfecto,
-        valorventaInafecto: totales.valorventaInafecto,
-        igv:                totales.igv,
-        total:              totales.total,
-        saldo:              totales.total,
+        valorventaAfecto:   totalesNetosAnticipo.valorventaAfecto,
+        valorventaExonerado: totalesNetosAnticipo.valorventaExonerado,
+        igv:                totalesNetosAnticipo.igv,
+        total:              totalFacturaFinal,
+        saldo:              totalFacturaFinal,
         detraccionMonto:    (formData as any).detraccion ? detraccionMonto : 0,
+        ...anticipoPayload,
         detalles:           detalles as any,
         guiaRemision:       buildGuiaPayload(),
       };
 
       const res = await documentoVentaService.crearConGuiaRemision(combinedDto);
+      // TODO temporal: confirmar la forma real de la respuesta de DocumentoConGuiaRemision
+      // para saber de qué campo leer el documentoVentaId. Borrar una vez confirmado.
+      console.log("[NotaSalida][debug] respuesta de crearConGuiaRemision:", res);
       const dvGuardado =
         (Array.isArray(res.documentosVentaIds) && res.documentosVentaIds.length > 0) ||
         !!res.documentoVentaId ||
@@ -988,6 +1129,36 @@ function CrearDocumentoVentaContent() {
       res.isSuccess
         ? toast.success(`${cantDV} DV + Guía creados y enviados a SUNAT`)
         : toast.warning(`Guardado con advertencias: ${res.message ?? "revisar"}`);
+
+      // ── Nota de Salida automática ────────────────────────────────────────────
+      // Solo si el checkbox "Nota Salida" está marcado y la factura ya fue
+      // emitida (res.isSuccess = aceptada por SUNAT) — no si solo quedó guardada
+      // en BD con advertencias/pendiente.
+      if ((formData as any).notaSalida && res.isSuccess) {
+        try {
+          // Acepta camelCase y PascalCase por si la respuesta del endpoint combinado
+          // (DocumentoConGuiaRemision) serializa distinto a DV_EnvioSunat.
+          const docRefNumero =
+            res.documentoVentaId ??
+            res.DocumentoVentaId ??
+            (Array.isArray(res.documentosVentaIds) ? res.documentosVentaIds[0] : undefined) ??
+            (Array.isArray(res.DocumentosVentaIds) ? res.DocumentosVentaIds[0] : undefined);
+          const notaSalidaPayload = buildNotaSalidaPayload({
+            empresaId:            EMPRESA_ID,
+            cuentaUsuarioDefault: CUENTA_USUARIO_ID,
+            dVentaForm:           formData as any,
+            guiaForm,
+            detalles:             detalles as any,
+            docReferenciaNumero:  docRefNumero,
+          });
+          const nsRes = await notaSalidaService.create(notaSalidaPayload);
+          nsRes.isSuccess
+            ? toast.success("Nota de Salida generada")
+            : toast.warning(`DV + Guía guardados, pero la Nota de Salida no se pudo crear: ${nsRes.message ?? "revisar"}`);
+        } catch (errNS: any) {
+          toast.warning(`DV + Guía guardados, pero la Nota de Salida no se pudo crear: ${errNS.message ?? "error desconocido"}`);
+        }
+      }
 
       if (pedidoImportadoId) {
         const esUsoCompleto =
@@ -1024,12 +1195,13 @@ function CrearDocumentoVentaContent() {
     try {
       const dto: CreateDocumentoVentaDTO = {
         ...(formData as any),
-        valorventaAfecto:   totales.valorventaAfecto,
-        valorventaInafecto: totales.valorventaInafecto,
-        igv:                totales.igv,
-        total:              totales.total,
-        saldo:              totales.total,
+        valorventaAfecto:   totalesNetosAnticipo.valorventaAfecto,
+        valorventaExonerado: totalesNetosAnticipo.valorventaExonerado,
+        igv:                totalesNetosAnticipo.igv,
+        total:              totalFacturaFinal,
+        saldo:              totalFacturaFinal,
         detraccionMonto:    (formData as any).detraccion ? detraccionMonto : 0,
+        ...anticipoPayload,
         detalles:           detalles as any,
       };
 
@@ -1311,6 +1483,18 @@ function CrearDocumentoVentaContent() {
               Limpiar
             </button>
           )}
+          {!isEditMode && (
+            <button
+              type="button"
+              onClick={() => setModalAnticipos(true)}
+              disabled={isBusy || loading || !(formData as any).clienteId}
+              title={!(formData as any).clienteId ? "Seleccione un cliente primero" : undefined}
+              className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            >
+              <IconCashBanknote size={18} className="text-emerald-500" />
+              Agregar Anticipo
+            </button>
+          )}
           {isEditMode ? (
             <button
               onClick={handleUpdate}
@@ -1355,10 +1539,50 @@ function CrearDocumentoVentaContent() {
 
       {/* ── Grid principal ── */}
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 lg:col-span-8 space-y-6">
+
+        {/* ── Columna izquierda: panel con tabs ── */}
+        <div className={`col-span-12 ${activeTab === "detalle" ? "" : "lg:col-span-8"}`}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setActiveTab("general")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "general"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconFileDescription size={15} /> Datos Generales
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("detalle")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "detalle"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconListDetails size={15} /> Detalle
+                {(detalles as any[]).length > 0 && (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === "detalle" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    {(detalles as any[]).length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ══ TAB: Datos Generales ══ */}
+            {activeTab === "general" && (
+              <div className="p-6 space-y-6">
 
           {/* Datos del Documento + Cliente */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <div>
             <SectionTitle title="Datos del Documento" icon={IconFileInvoice} />
 
             <div className="mb-5">
@@ -1486,7 +1710,7 @@ function CrearDocumentoVentaContent() {
           </div>
 
           {/* ── Condiciones de Pago ── */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <div>
             <SectionTitle title="Condiciones de Pago" icon={IconCalendar} />
             <div className="space-y-4">
               <div className="flex flex-col gap-1.5">
@@ -1596,41 +1820,13 @@ function CrearDocumentoVentaContent() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* ── Columna derecha: Resumen ── */}
-        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="bg-slate-800 px-5 py-4">
-              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="border-t border-slate-100 pt-4 space-y-3">
-                {[
-                  { label: "Total Gravado",   val: totales.gravado   },
-                  { label: "Total Exonerado", val: totales.exonerado },
-                  { label: "Total Gratuito",  val: totales.gratuito  },
-                  { label: "IGV (18%)",       val: totales.igv       },
-                ].map(({ label, val }) => (
-                  <div key={label} className="flex justify-between items-center py-1">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">{label}</span>
-                    <span className="text-base font-mono font-bold text-slate-800">{monedaLabel} {formatMoney(val)}</span>
-                  </div>
-                ))}
               </div>
-              <div className="border-t-2 border-blue-600 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
-                  <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totales.total)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            )}
 
-      {/* ── Detalles del Documento ── */}
-      <div className={`bg-white p-6 rounded-xl shadow-sm border transition-all mt-6 ${isPedidoLocked ? "border-amber-200" : "border-slate-200"}`}>
+            {/* ══ TAB: Detalle ══ */}
+            {activeTab === "detalle" && (
+              <div className="p-6">
         <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-4 mt-2">
           <div className="flex items-center gap-2 text-slate-800">
             <IconReceipt className="text-blue-600" size={20} />
@@ -1923,6 +2119,124 @@ function CrearDocumentoVentaContent() {
             </tbody>
           </table>
         </div>
+              </div>
+            )}
+
+          </div>
+        </div>{/* ── fin columna izquierda ── */}
+
+        {/* ── Columna derecha: Resumen ── */}
+        {activeTab === "general" && (
+        <div className="col-span-12 lg:col-span-4 self-start sticky top-6 space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-800 px-5 py-4">
+              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                {[
+                  { label: "Total Gravado",   val: totalesNetosAnticipo.valorventaAfecto,    descontado: anticipoSplit.afectoBase > 0 },
+                  { label: "Total Exonerado", val: totalesNetosAnticipo.valorventaExonerado, descontado: anticipoSplit.exonerado > 0 },
+                  { label: "Total Gratuito",  val: totales.gratuito, descontado: false },
+                  { label: "IGV (18%)",       val: totalesNetosAnticipo.igv,                 descontado: anticipoSplit.igv > 0 },
+                ].map(({ label, val, descontado }) => (
+                  <div key={label} className="flex justify-between items-center py-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">
+                      {label}{descontado && <span className="ml-1 normal-case text-emerald-600">(neto de anticipo)</span>}
+                    </span>
+                    <span className="text-base font-mono font-bold text-slate-800">{monedaLabel} {formatMoney(val)}</span>
+                  </div>
+                ))}
+              </div>
+              {totalAnticipoAplicado != null && (
+                <div className="flex justify-between items-center py-1 border-t border-slate-100 pt-3">
+                  <span className="text-xs font-bold text-emerald-700 uppercase">Anticipo Aplicado (Incl. IGV)</span>
+                  <span className="text-base font-mono font-bold text-emerald-700">{monedaLabel} {formatMoney(totalAnticipoAplicado)}</span>
+                </div>
+              )}
+              <div className="border-t-2 border-blue-600 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-700 uppercase">
+                    {totalAnticipoAplicado != null && !anticipoSplit.esSplitApto ? "Subtotal" : "Total"}
+                  </span>
+                  <span className={`font-bold font-mono text-blue-700 ${totalAnticipoAplicado != null && !anticipoSplit.esSplitApto ? "text-base" : "text-2xl"}`}>
+                    {monedaLabel} {formatMoney(anticipoSplit.esSplitApto ? totalFacturaFinal : totales.total)}
+                  </span>
+                </div>
+              </div>
+              {totalAnticipoAplicado != null && !anticipoSplit.esSplitApto && (
+                <div className="border-t-2 border-blue-600 pt-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-slate-700 uppercase">Total a Pagar</span>
+                    <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totalFacturaFinal)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Opciones adicionales del documento ── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+            <label htmlFor="chk-nota-salida" className="flex items-center justify-between cursor-pointer select-none">
+              <span className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase">
+                <IconPackageExport size={14} className={(formData as any).notaSalida ? "text-indigo-600" : "text-slate-400"} />
+                Nota Salida
+              </span>
+              <input
+                id="chk-nota-salida"
+                type="checkbox"
+                checked={!!(formData as any).notaSalida}
+                onChange={(e) => updateField("notaSalida", e.target.checked)}
+                className="w-4 h-4 accent-indigo-600 cursor-pointer"
+              />
+            </label>
+            <label htmlFor="chk-anticipo" className="flex items-center justify-between cursor-pointer select-none border-t border-slate-100 pt-3">
+              <span className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase">
+                <IconCashBanknote size={14} className={(formData as any).esAnticipo ? "text-indigo-600" : "text-slate-400"} />
+                Anticipo
+              </span>
+              <input
+                id="chk-anticipo"
+                type="checkbox"
+                checked={!!(formData as any).esAnticipo}
+                onChange={(e) => updateField("esAnticipo", e.target.checked)}
+                className="w-4 h-4 accent-indigo-600 cursor-pointer"
+              />
+            </label>
+
+            {anticiposAplicados.length > 0 && (
+              <div className="space-y-1.5 mt-1">
+                <p className="text-[10px] font-bold text-emerald-700 uppercase">
+                  Anticipo{anticiposAplicados.length !== 1 ? "s" : ""} aplicado{anticiposAplicados.length !== 1 ? "s" : ""}
+                </p>
+                {anticiposAplicados.map((a) => (
+                  <div
+                    key={a.documentoventaId}
+                    className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2"
+                  >
+                    <p className="text-xs font-mono font-semibold text-emerald-800 truncate">
+                      {a.serie && a.numero ? `${a.serie}-${a.numero}` : a.documentoventaId}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAnticiposAplicados((prev) =>
+                          prev.filter((x) => x.documentoventaId !== a.documentoventaId)
+                        )
+                      }
+                      className="shrink-0 p-1 rounded-full text-emerald-500 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
+                      title="Quitar anticipo"
+                    >
+                      <IconX size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        )}
+
       </div>
 
       {showStock && (nuevoDetalle as any).bienId && (
@@ -1940,6 +2254,20 @@ function CrearDocumentoVentaContent() {
           empresaId={EMPRESA_ID}
           onImportar={handleImportarPedido}
           onClose={() => setModalImportar(false)}
+        />
+      )}
+      {modalAnticipos && (formData as any).clienteId && (
+        <AnticiposDisponiblesPanel
+          empresaId={EMPRESA_ID}
+          clienteId={(formData as any).clienteId}
+          yaAplicadosIds={anticiposAplicados.map((a) => a.documentoventaId)}
+          onAgregar={(nuevos) => {
+            setAnticiposAplicados((prev) => [...prev, ...nuevos]);
+            toast.success(
+              `${nuevos.length} anticipo${nuevos.length !== 1 ? "s" : ""} agregado${nuevos.length !== 1 ? "s" : ""}`
+            );
+          }}
+          onClose={() => setModalAnticipos(false)}
         />
       )}
       {modalNuevoCliente && (

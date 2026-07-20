@@ -33,6 +33,8 @@ export interface DVentaFormData {
   pedidoventaId:        string | null;
   tipoopegratuitaId:    string;
   clienteDireccion:     string;
+  notaSalida:           boolean;
+  esAnticipo:           boolean;
 }
 
 export interface GuiaFormData {
@@ -80,6 +82,8 @@ export const DVENTA_INITIAL: DVentaFormData = {
   pedidoventaId:        null,
   tipoopegratuitaId:    "00",
   clienteDireccion:     "",
+  notaSalida:           false,
+  esAnticipo:           false,
 };
 
 export const GUIA_INITIAL: GuiaFormData = {

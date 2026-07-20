@@ -311,6 +311,8 @@ export default function CrearCotizacionPage() {
     observacion:      "",
   });
 
+  const [activeTab, setActiveTab] = useState<"general" | "detalle">("general");
+
   const [detalles,     setDetalles]     = useState<CotizacionDetalle[]>([]);
   const [nuevoDetalle, setNuevoDetalle] = useState<CotizacionDetalle>(emptyDetalle());
   const [precioTierLabel, setPrecioTierLabel] = useState<"minorista" | "mayorista" | "distribuidor" | null>(null);
@@ -743,168 +745,464 @@ export default function CrearCotizacionPage() {
 
       <div className="grid grid-cols-12 gap-6">
 
-        {/* ── Columna izquierda ── */}
-        <div className="col-span-12 lg:col-span-8 space-y-6">
+        {/* ── Columna izquierda: panel con tabs ── */}
+        {/* En la pestaña Detalle el panel usa el ancho completo para que la tabla no quede apretada */}
+        <div className={`col-span-12 ${activeTab === "detalle" ? "" : "lg:col-span-8"}`}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
 
-          {/* ══ Datos del Cliente ══ */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <SectionHeader icon={<IconFileDescription size={16} />} title="Datos del Cliente" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="[&_*]:uppercase [&_input]:uppercase [&_span]:uppercase [&_li]:uppercase">
-                <DropDownClient
-                  tenantId={TENANT_ID}
-                  name="clienteId"
-                  label="Cliente *"
-                  value={form.clienteId}
-                  onChange={(e) => setForm((prev) => ({ ...prev, clienteId: e.target.value }))}
-                  filtroTipoDoc={null}
-                  disabled={isBusy}
-                />
-              </div>
-              <TrabajadorDDL
-                empresaId={EMPRESA_ID}
-                value={form.trabajadorId}
-                onChange={(id) => setForm((prev) => ({ ...prev, trabajadorId: id }))}
-              />
-            </div>
-          </div>
-
-          {/* ══ Condiciones Comerciales ══ */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <SectionHeader icon={<IconCoin size={16} />} title="Condiciones Comerciales" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-              {/* Moneda */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Moneda *</label>
-                <select
-                  name="monedaId"
-                  value={form.monedaId}
-                  onChange={handleMonedaChange}
-                  disabled={isBusy}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                >
-                  <option value="">Seleccionar...</option>
-                  {catalogs?.monedas?.length
-                    ? catalogs.monedas.map((m) => (
-                        <option key={m.key} value={m.key.toString()}>{m.key} - {m.value}</option>
-                      ))
-                    : (
-                      <>
-                        <option value="001">001 - SOLES</option>
-                        <option value="002">002 - DÓLARES</option>
-                        <option value="003">003 - EUROS</option>
-                      </>
-                    )}
-                </select>
-              </div>
-
-              {/* Condición de Pago */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Condición de Pago</label>
-                <select
-                  name="condicionPago"
-                  value={form.condicionPago}
-                  onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "", fechaVencimiento: "" }))}
-                  onFocus={refreshCondicionesPago}
-                  disabled={isBusy}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                >
-                  <option value="">Seleccionar...</option>
-                  {condicionesPago.map((cp: any) => {
-                    const id = cp.condicionPagoId ?? cp.condicion_pago;
-                    return <option key={id} value={id}>{cp.descripcion ?? cp.condicion_pago}</option>;
-                  })}
-                </select>
-              </div>
-
-              {/* Forma de Pago */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Forma de Pago</label>
-                <select
-                  name="formaspagoId"
-                  value={form.formaspagoId}
-                  onChange={handleChange}
-                  onFocus={refreshFormasPago}
-                  disabled={isBusy || !form.condicionPago}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
-                >
-                  <option value="">
-                    {!form.condicionPago ? "Seleccione primero condición de pago" : "Seleccionar..."}
-                  </option>
-                  {formasPagoFiltradas.map((fp: any) => (
-                    <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
-                      {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Tiempo de Validez */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tiempo de Validez (días)</label>
-                <input
-                  type="number"
-                  name="tiempoValidez"
-                  min={1}
-                  value={form.tiempoValidez}
-                  onChange={handleChange}
-                  disabled={isBusy}
-                  placeholder="Ej: 30"
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                />
-              </div>
-
-              {/* Fecha Vencimiento — calculada automáticamente */}
-              <div className="flex flex-col gap-1.5">
-                <DateInput
-                  label="Fecha Vencimiento (automática)"
-                  name="fechaVencimiento"
-                  value={form.fechaVencimiento}
-                  onChange={handleChange}
-                  disabled={true}
-                />
-                {!form.fechaVencimiento && (
-                  <p className="text-[10px] text-slate-400 italic ml-1 normal-case">
-                    Ingrese el tiempo de validez para calcularla
-                  </p>
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setActiveTab("general")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "general"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconFileDescription size={15} /> Datos Generales
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("detalle")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "detalle"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconListDetails size={15} /> Detalle
+                {detalles.length > 0 && (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === "detalle" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    {detalles.length}
+                  </span>
                 )}
-              </div>
-
-              {/* Ord. Compra N° */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">N° Orden de Compra</label>
-                <input
-                  type="text"
-                  name="ordcompraNumero"
-                  value={form.ordcompraNumero}
-                  onChange={handleChange}
-                  disabled={isBusy}
-                  placeholder="Número de OC del cliente..."
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
-                />
-              </div>
-
-              {/* Observación */}
-              <div className="flex flex-col gap-1.5 md:col-span-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Observación</label>
-                <textarea
-                  name="observacion"
-                  value={form.observacion}
-                  onChange={(e) => setForm((prev) => ({ ...prev, observacion: e.target.value }))}
-                  rows={2}
-                  placeholder="Observaciones adicionales..."
-                  disabled={isBusy}
-                  className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase resize-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
-                />
-              </div>
-
+              </button>
             </div>
-          </div>
 
+            {/* ══ TAB: Datos Generales ══ */}
+            {activeTab === "general" && (
+              <div className="p-6 space-y-6">
+
+                {/* Datos del Cliente */}
+                <div>
+                  <SectionHeader icon={<IconFileDescription size={16} />} title="Datos del Cliente" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="[&_*]:uppercase [&_input]:uppercase [&_span]:uppercase [&_li]:uppercase">
+                      <DropDownClient
+                        tenantId={TENANT_ID}
+                        name="clienteId"
+                        label="Cliente *"
+                        value={form.clienteId}
+                        onChange={(e) => setForm((prev) => ({ ...prev, clienteId: e.target.value }))}
+                        filtroTipoDoc={null}
+                        disabled={isBusy}
+                      />
+                    </div>
+                    <TrabajadorDDL
+                      empresaId={EMPRESA_ID}
+                      value={form.trabajadorId}
+                      onChange={(id) => setForm((prev) => ({ ...prev, trabajadorId: id }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Condiciones Comerciales */}
+                <div>
+                  <SectionHeader icon={<IconCoin size={16} />} title="Condiciones Comerciales" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {/* Moneda */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Moneda *</label>
+                      <select
+                        name="monedaId"
+                        value={form.monedaId}
+                        onChange={handleMonedaChange}
+                        disabled={isBusy}
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {catalogs?.monedas?.length
+                          ? catalogs.monedas.map((m) => (
+                              <option key={m.key} value={m.key.toString()}>{m.key} - {m.value}</option>
+                            ))
+                          : (
+                            <>
+                              <option value="001">001 - SOLES</option>
+                              <option value="002">002 - DÓLARES</option>
+                              <option value="003">003 - EUROS</option>
+                            </>
+                          )}
+                      </select>
+                    </div>
+
+                    {/* Condición de Pago */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Condición de Pago</label>
+                      <select
+                        name="condicionPago"
+                        value={form.condicionPago}
+                        onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "", fechaVencimiento: "" }))}
+                        onFocus={refreshCondicionesPago}
+                        disabled={isBusy}
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {condicionesPago.map((cp: any) => {
+                          const id = cp.condicionPagoId ?? cp.condicion_pago;
+                          return <option key={id} value={id}>{cp.descripcion ?? cp.condicion_pago}</option>;
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Forma de Pago */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Forma de Pago</label>
+                      <select
+                        name="formaspagoId"
+                        value={form.formaspagoId}
+                        onChange={handleChange}
+                        onFocus={refreshFormasPago}
+                        disabled={isBusy || !form.condicionPago}
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
+                      >
+                        <option value="">
+                          {!form.condicionPago ? "Seleccione primero condición de pago" : "Seleccionar..."}
+                        </option>
+                        {formasPagoFiltradas.map((fp: any) => (
+                          <option key={fp.formaspagoId ?? fp.descripcion} value={fp.formaspagoId ?? ""}>
+                            {fp.descripcion}{fp.diasFormPago != null ? ` (${fp.diasFormPago}d)` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Tiempo de Validez */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tiempo de Validez (días)</label>
+                      <input
+                        type="number"
+                        name="tiempoValidez"
+                        min={1}
+                        value={form.tiempoValidez}
+                        onChange={handleChange}
+                        disabled={isBusy}
+                        placeholder="Ej: 30"
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                      />
+                    </div>
+
+                    {/* Fecha Vencimiento — calculada automáticamente */}
+                    <div className="flex flex-col gap-1.5">
+                      <DateInput
+                        label="Fecha Vencimiento (automática)"
+                        name="fechaVencimiento"
+                        value={form.fechaVencimiento}
+                        onChange={handleChange}
+                        disabled={true}
+                      />
+                      {!form.fechaVencimiento && (
+                        <p className="text-[10px] text-slate-400 italic ml-1 normal-case">
+                          Ingrese el tiempo de validez para calcularla
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Ord. Compra N° */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">N° Orden de Compra</label>
+                      <input
+                        type="text"
+                        name="ordcompraNumero"
+                        value={form.ordcompraNumero}
+                        onChange={handleChange}
+                        disabled={isBusy}
+                        placeholder="Número de OC del cliente..."
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
+                      />
+                    </div>
+
+                    {/* Observación */}
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Observación</label>
+                      <textarea
+                        name="observacion"
+                        value={form.observacion}
+                        onChange={(e) => setForm((prev) => ({ ...prev, observacion: e.target.value }))}
+                        rows={2}
+                        placeholder="Observaciones adicionales..."
+                        disabled={isBusy}
+                        className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase resize-none transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                      />
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* ══ TAB: Detalle ══ */}
+            {activeTab === "detalle" && (
+              <div className="p-6">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-5 bg-blue-600 rounded" />
+                    <span className="text-blue-600"><IconListDetails size={16} /></span>
+                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Detalle de Ítems</h3>
+                  </div>
+                  {listasPrecios.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Lista de Precios:</span>
+                      <select
+                        value={selectedListaId}
+                        disabled={isBusy}
+                        onChange={(e) => {
+                          setSelectedListaId(e.target.value);
+                          setNuevoDetalle(emptyDetalle());
+                          setPrecioTierLabel(null);
+                          setPrecioLimites(null);
+                          setPresentacionesNuevo([]);
+                        }}
+                        className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
+                      >
+                        {listasPrecios.map((lp) => (
+                          <option key={lp.listaprecioId} value={lp.listaprecioId}>
+                            {lp.descripcion || lp.codigo_lista}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-800 text-white uppercase font-semibold text-[10px]">
+                      <tr>
+                        <th className="p-3 w-10 text-center">#</th>
+                        <th className="p-3">Producto</th>
+                        <th className="p-3">Presentación</th>
+                        <th className="p-3 text-center w-20">Cant.</th>
+                        <th className="p-3 text-right w-28">Precio</th>
+                        <th className="p-3 text-right w-28">Importe</th>
+                        <th className="p-3 text-center w-20">IGV</th>
+                        <th className="p-3">Obs.</th>
+                        <th className="p-3 w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {detalles.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="px-4 py-3 text-center text-slate-400 italic text-[11px]">
+                            Sin ítems aún — usa la fila de abajo para agregar productos.
+                          </td>
+                        </tr>
+                      )}
+                      {detalles.map((d, i) => (
+                        <tr
+                          key={i}
+                          className={`transition-colors border-l-4 ${
+                            d.afectoInafecto === false
+                              ? "border-l-amber-400 bg-amber-50/40 hover:bg-amber-50/70"
+                              : "border-l-green-400 bg-white hover:bg-slate-50/50"
+                          }`}
+                        >
+                          <td className="p-3 text-center text-slate-400 font-mono font-bold">{i + 1}</td>
+                          <td className="p-3">
+                            <span className="font-semibold text-slate-800 block leading-tight truncate max-w-[180px]">
+                              {getBienNombre(d.bienId ?? "")}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">{d.bienId}</span>
+                          </td>
+                          <td className="p-3 text-slate-600 text-[11px]">
+                            {getPresentacionNombre(d.bienId ?? "", d.presentacionId ?? "")}
+                          </td>
+                          <td className="p-3 text-center font-mono">{Number(d.cantidad).toFixed(3)}</td>
+                          <td className="p-3 text-right font-mono">{formatMoney(Number(d.precio))}</td>
+                          <td className="p-3 text-right font-mono font-semibold text-slate-800">{formatMoney(calcImporte(d))}</td>
+                          <td className="p-3 text-center">
+                            {d.afectoInafecto === false
+                              ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                              : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
+                            }
+                          </td>
+                          <td className="p-3 text-slate-500 text-[11px] max-w-[120px] truncate">{d.observacion ?? "—"}</td>
+                          <td className="p-3 text-center">
+                            <button
+                              onClick={() => handleEliminarDetalle(i)}
+                              className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <IconTrash size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* ── Fila agregar inline ── */}
+                      <tr className="bg-blue-50/30 border-t-2 border-dashed border-blue-200">
+                        <td className="p-2 text-center text-blue-400 font-mono font-bold text-sm select-none">+</td>
+                        <td className="p-1.5 min-w-[200px]">
+                          <SearchableSelect
+                            name="nuevo_bienId"
+                            options={bienesDisponibles}
+                            value={nuevoDetalle.bienId ?? ""}
+                            disabled={isBusy}
+                            placeholder="Buscar producto..."
+                            onChange={async (e: any) => {
+                              const bienId = e.target.value;
+                              const bien   = catalogs?.bienes?.find((b) => b.key?.toString() === bienId) as any;
+                              setPresentacionesNuevo([]);
+                              setNuevoDetalle((prev) => ({
+                                ...prev,
+                                bienId,
+                                presentacionId: "",
+                                precio:         0,
+                                afectoInafecto: bien?.afecto_inafecto ?? true,
+                              }));
+                              if (bienId) {
+                                setLoadingPres(true);
+                                try {
+                                  const res = await presentacionService.getByBien(bienId, true);
+                                  setPresentacionesNuevo(
+                                    (res?.data ?? []).map((p: any) => ({
+                                      key:    p.presentacionId,
+                                      value:  p.descripcion,
+                                      factor: p.cantidad ?? 1,
+                                    }))
+                                  );
+                                } catch { /* silencioso */ }
+                                finally { setLoadingPres(false); }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="p-1.5 min-w-[140px]">
+                          <SearchableSelect
+                            name="nuevo_presentacionId"
+                            options={presentacionOptsNuevo}
+                            value={nuevoDetalle.presentacionId ?? ""}
+                            disabled={isBusy || loadingPres || !nuevoDetalle.bienId}
+                            placeholder={loadingPres ? "Cargando..." : "-- Presentación --"}
+                            onChange={(e: any) => {
+                              const presentacionId = e.target.value;
+                              const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
+                              if (det) {
+                                const tierInfo = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+                                setPrecioTierLabel(tierInfo.tier);
+                                setPrecioLimites({ min: tierInfo.min });
+                                setNuevoDetalle((prev) => ({
+                                  ...prev,
+                                  presentacionId,
+                                  ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                                }));
+                              } else {
+                                setPrecioTierLabel(null);
+                                setPrecioLimites(null);
+                                setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="p-1.5 w-24">
+                          <input
+                            type="number" min="0.001" step="0.001"
+                            value={nuevoDetalle.cantidad ?? ""}
+                            disabled={isBusy}
+                            onChange={(e) => {
+                              const cantidad = Number(e.target.value);
+                              const det = nuevoDetalle.presentacionId
+                                ? listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId)
+                                : undefined;
+                              if (det) {
+                                const tierInfo = calcPrecioTier(det, cantidad);
+                                setPrecioTierLabel(tierInfo.tier);
+                                setPrecioLimites({ min: tierInfo.min });
+                                setNuevoDetalle((prev) => ({
+                                  ...prev,
+                                  cantidad,
+                                  ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                                }));
+                              } else {
+                                setNuevoDetalle((prev) => ({ ...prev, cantidad }));
+                              }
+                            }}
+                            className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
+                          />
+                        </td>
+                        <td className="p-1.5 w-28">
+                          <input
+                            type="number" min={precioLimites?.min ?? 0} step="0.000001"
+                            value={nuevoDetalle.precio ?? ""}
+                            disabled={isBusy}
+                            onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, precio: Number(e.target.value) }))}
+                            className={`w-full border rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 transition-all disabled:bg-slate-50 ${
+                              precioLimites && nuevoDetalle.precio != null && nuevoDetalle.precio < precioLimites.min
+                                ? "border-red-400 focus:ring-red-400 bg-red-50"
+                                : "border-slate-200 focus:ring-blue-500"
+                            }`}
+                          />
+                          {precioTierLabel && (
+                            <p className={`text-[9px] font-bold mt-0.5 text-right ${
+                              precioTierLabel === "distribuidor" ? "text-purple-600" :
+                              precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
+                            }`}>
+                              {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
+                              {precioLimites && precioLimites.min > 0 ? ` · Mín: ${precioLimites.min.toFixed(2)}` : ""}
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-2 text-right font-mono text-xs text-slate-500">
+                          {nuevoDetalle.bienId ? formatMoney(calcImporte(nuevoDetalle)) : "—"}
+                        </td>
+                        <td className="p-2 text-center">
+                          {nuevoDetalle.bienId
+                            ? nuevoDetalle.afectoInafecto === false
+                              ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                              : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
+                            : <span className="text-slate-300 text-[10px]">—</span>}
+                        </td>
+                        <td className="p-2 text-slate-300 text-[10px]">—</td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={handleAgregarDetalle}
+                            disabled={isBusy}
+                            className="h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center mx-auto transition-all active:scale-95 disabled:opacity-50"
+                            title="Agregar ítem"
+                          >
+                            <IconPlus size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                    {detalles.length > 0 && (
+                      <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                        <tr>
+                          <td colSpan={5} className="px-3 py-3 text-right text-xs font-bold text-slate-600 uppercase">Total estimado</td>
+                          <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">{formatMoney(totalGeneral)}</td>
+                          <td colSpan={3} />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2 italic">
+                  * El importe es referencial. El cálculo final de IGV y totales lo realiza el servidor.
+                </p>
+              </div>
+            )}
+
+          </div>
         </div>{/* ── fin columna izquierda ── */}
 
         {/* ── Columna derecha: Resumen ── */}
+        {/* Se oculta en la pestaña Detalle, donde el panel izquierdo usa el ancho completo */}
+        {activeTab === "general" && (
         <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-slate-800 px-5 py-4">
@@ -947,257 +1245,9 @@ export default function CrearCotizacionPage() {
             </div>
           </div>
         </div>
+        )}
 
       </div>{/* ── fin grid ── */}
-
-      {/* ══ Detalle de Ítems ══ */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mt-6">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-5 bg-blue-600 rounded" />
-            <span className="text-blue-600"><IconListDetails size={16} /></span>
-            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Detalle de Ítems</h3>
-          </div>
-          {listasPrecios.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Lista de Precios:</span>
-              <select
-                value={selectedListaId}
-                disabled={isBusy}
-                onChange={(e) => {
-                  setSelectedListaId(e.target.value);
-                  setNuevoDetalle(emptyDetalle());
-                  setPrecioTierLabel(null);
-                  setPrecioLimites(null);
-                  setPresentacionesNuevo([]);
-                }}
-                className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50"
-              >
-                {listasPrecios.map((lp) => (
-                  <option key={lp.listaprecioId} value={lp.listaprecioId}>
-                    {lp.descripcion || lp.codigo_lista}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-800 text-white uppercase font-semibold text-[10px]">
-              <tr>
-                <th className="p-3 w-10 text-center">#</th>
-                <th className="p-3">Producto</th>
-                <th className="p-3">Presentación</th>
-                <th className="p-3 text-center w-20">Cant.</th>
-                <th className="p-3 text-right w-28">Precio</th>
-                <th className="p-3 text-right w-28">Importe</th>
-                <th className="p-3 text-center w-20">IGV</th>
-                <th className="p-3">Obs.</th>
-                <th className="p-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {detalles.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-3 text-center text-slate-400 italic text-[11px]">
-                    Sin ítems aún — usa la fila de abajo para agregar productos.
-                  </td>
-                </tr>
-              )}
-              {detalles.map((d, i) => (
-                <tr
-                  key={i}
-                  className={`transition-colors border-l-4 ${
-                    d.afectoInafecto === false
-                      ? "border-l-amber-400 bg-amber-50/40 hover:bg-amber-50/70"
-                      : "border-l-green-400 bg-white hover:bg-slate-50/50"
-                  }`}
-                >
-                  <td className="p-3 text-center text-slate-400 font-mono font-bold">{i + 1}</td>
-                  <td className="p-3">
-                    <span className="font-semibold text-slate-800 block leading-tight truncate max-w-[180px]">
-                      {getBienNombre(d.bienId ?? "")}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">{d.bienId}</span>
-                  </td>
-                  <td className="p-3 text-slate-600 text-[11px]">
-                    {getPresentacionNombre(d.bienId ?? "", d.presentacionId ?? "")}
-                  </td>
-                  <td className="p-3 text-center font-mono">{Number(d.cantidad).toFixed(3)}</td>
-                  <td className="p-3 text-right font-mono">{formatMoney(Number(d.precio))}</td>
-                  <td className="p-3 text-right font-mono font-semibold text-slate-800">{formatMoney(calcImporte(d))}</td>
-                  <td className="p-3 text-center">
-                    {d.afectoInafecto === false
-                      ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
-                      : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
-                    }
-                  </td>
-                  <td className="p-3 text-slate-500 text-[11px] max-w-[120px] truncate">{d.observacion ?? "—"}</td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleEliminarDetalle(i)}
-                      className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                      <IconTrash size={15} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-
-              {/* ── Fila agregar inline ── */}
-              <tr className="bg-blue-50/30 border-t-2 border-dashed border-blue-200">
-                <td className="p-2 text-center text-blue-400 font-mono font-bold text-sm select-none">+</td>
-                <td className="p-1.5 min-w-[200px]">
-                  <SearchableSelect
-                    name="nuevo_bienId"
-                    options={bienesDisponibles}
-                    value={nuevoDetalle.bienId ?? ""}
-                    disabled={isBusy}
-                    placeholder="Buscar producto..."
-                    onChange={async (e: any) => {
-                      const bienId = e.target.value;
-                      const bien   = catalogs?.bienes?.find((b) => b.key?.toString() === bienId) as any;
-                      setPresentacionesNuevo([]);
-                      setNuevoDetalle((prev) => ({
-                        ...prev,
-                        bienId,
-                        presentacionId: "",
-                        precio:         0,
-                        afectoInafecto: bien?.afecto_inafecto ?? true,
-                      }));
-                      if (bienId) {
-                        setLoadingPres(true);
-                        try {
-                          const res = await presentacionService.getByBien(bienId, true);
-                          setPresentacionesNuevo(
-                            (res?.data ?? []).map((p: any) => ({
-                              key:    p.presentacionId,
-                              value:  p.descripcion,
-                              factor: p.cantidad ?? 1,
-                            }))
-                          );
-                        } catch { /* silencioso */ }
-                        finally { setLoadingPres(false); }
-                      }
-                    }}
-                  />
-                </td>
-                <td className="p-1.5 min-w-[140px]">
-                  <SearchableSelect
-                    name="nuevo_presentacionId"
-                    options={presentacionOptsNuevo}
-                    value={nuevoDetalle.presentacionId ?? ""}
-                    disabled={isBusy || loadingPres || !nuevoDetalle.bienId}
-                    placeholder={loadingPres ? "Cargando..." : "-- Presentación --"}
-                    onChange={(e: any) => {
-                      const presentacionId = e.target.value;
-                      const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
-                      if (det) {
-                        const tierInfo = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
-                        setPrecioTierLabel(tierInfo.tier);
-                        setPrecioLimites({ min: tierInfo.min });
-                        setNuevoDetalle((prev) => ({
-                          ...prev,
-                          presentacionId,
-                          ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
-                        }));
-                      } else {
-                        setPrecioTierLabel(null);
-                        setPrecioLimites(null);
-                        setNuevoDetalle((prev) => ({ ...prev, presentacionId }));
-                      }
-                    }}
-                  />
-                </td>
-                <td className="p-1.5 w-24">
-                  <input
-                    type="number" min="0.001" step="0.001"
-                    value={nuevoDetalle.cantidad ?? ""}
-                    disabled={isBusy}
-                    onChange={(e) => {
-                      const cantidad = Number(e.target.value);
-                      const det = nuevoDetalle.presentacionId
-                        ? listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId)
-                        : undefined;
-                      if (det) {
-                        const tierInfo = calcPrecioTier(det, cantidad);
-                        setPrecioTierLabel(tierInfo.tier);
-                        setPrecioLimites({ min: tierInfo.min });
-                        setNuevoDetalle((prev) => ({
-                          ...prev,
-                          cantidad,
-                          ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
-                        }));
-                      } else {
-                        setNuevoDetalle((prev) => ({ ...prev, cantidad }));
-                      }
-                    }}
-                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-xs text-center font-mono outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 transition-all"
-                  />
-                </td>
-                <td className="p-1.5 w-28">
-                  <input
-                    type="number" min={precioLimites?.min ?? 0} step="0.000001"
-                    value={nuevoDetalle.precio ?? ""}
-                    disabled={isBusy}
-                    onChange={(e) => setNuevoDetalle((prev) => ({ ...prev, precio: Number(e.target.value) }))}
-                    className={`w-full border rounded-lg px-2 py-2 text-xs text-right font-mono outline-none focus:ring-2 transition-all disabled:bg-slate-50 ${
-                      precioLimites && nuevoDetalle.precio != null && nuevoDetalle.precio < precioLimites.min
-                        ? "border-red-400 focus:ring-red-400 bg-red-50"
-                        : "border-slate-200 focus:ring-blue-500"
-                    }`}
-                  />
-                  {precioTierLabel && (
-                    <p className={`text-[9px] font-bold mt-0.5 text-right ${
-                      precioTierLabel === "distribuidor" ? "text-purple-600" :
-                      precioTierLabel === "mayorista"    ? "text-blue-600"   : "text-green-600"
-                    }`}>
-                      {precioTierLabel === "distribuidor" ? "DIST" : precioTierLabel === "mayorista" ? "MAY" : "MIN"}
-                      {precioLimites && precioLimites.min > 0 ? ` · Mín: ${precioLimites.min.toFixed(2)}` : ""}
-                    </p>
-                  )}
-                </td>
-                <td className="p-2 text-right font-mono text-xs text-slate-500">
-                  {nuevoDetalle.bienId ? formatMoney(calcImporte(nuevoDetalle)) : "—"}
-                </td>
-                <td className="p-2 text-center">
-                  {nuevoDetalle.bienId
-                    ? nuevoDetalle.afectoInafecto === false
-                      ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
-                      : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
-                    : <span className="text-slate-300 text-[10px]">—</span>}
-                </td>
-                <td className="p-2 text-slate-300 text-[10px]">—</td>
-                <td className="p-2 text-center">
-                  <button
-                    type="button"
-                    onClick={handleAgregarDetalle}
-                    disabled={isBusy}
-                    className="h-8 w-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center mx-auto transition-all active:scale-95 disabled:opacity-50"
-                    title="Agregar ítem"
-                  >
-                    <IconPlus size={14} />
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-            {detalles.length > 0 && (
-              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                <tr>
-                  <td colSpan={5} className="px-3 py-3 text-right text-xs font-bold text-slate-600 uppercase">Total estimado</td>
-                  <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">{formatMoney(totalGeneral)}</td>
-                  <td colSpan={3} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-        <p className="text-[10px] text-slate-400 mt-2 italic">
-          * El importe es referencial. El cálculo final de IGV y totales lo realiza el servidor.
-        </p>
-      </div>
 
     </div>
   );

@@ -280,7 +280,7 @@ export function generarHtmlBoleta(doc: any, logoUrl: string, opts?: { refSerieNu
       </div>
       <div class="totals">
         <div class="t-row"><span>Op. Gravadas</span><span>S/ ${fmt(doc.valorventa_afecto   ?? 0)}</span></div>
-        <div class="t-row"><span>Op. Exoneradas</span><span>S/ ${fmt(doc.valorventa_inafecto ?? 0)}</span></div>
+        <div class="t-row"><span>Op. Exoneradas</span><span>S/ ${fmt(doc.valorventa_exonerado ?? doc.valorventa_inafecto ?? 0)}</span></div>
         <div class="t-row"><span>Op. Gratuitas</span><span>S/ ${fmt(doc.valorventa_gratuito ?? 0)}</span></div>
         <div class="t-row"><span>IGV (18%)</span><span>S/ ${fmt(doc.igv ?? 0)}</span></div>
         <div class="t-final"><span>TOTAL A PAGAR</span><span>S/ ${fmt(doc.total ?? 0)}</span></div>

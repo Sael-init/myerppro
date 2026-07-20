@@ -513,6 +513,8 @@ export default function CrearPedidoVentaPage() {
   const [showImportCot,  setShowImportCot]  = useState(false);
   const [cotizacionventaId, setCotizacionventaId] = useState<string | undefined>(undefined);
 
+  const [activeTab, setActiveTab] = useState<"general" | "detalle">("general");
+
   // ── Carga inicial de catálogos ─────────────────────────────────────────────
   useEffect(() => {
     const loadAll = async () => {
@@ -1161,11 +1163,49 @@ export default function CrearPedidoVentaPage() {
 
       <div className="grid grid-cols-12 gap-6">
 
-        {/* ── Columna izquierda ── */}
-        <div className="col-span-12 lg:col-span-8 space-y-6">
+        {/* ── Columna izquierda: panel con tabs ── */}
+        <div className={`col-span-12 ${activeTab === "detalle" ? "" : "lg:col-span-8"}`}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setActiveTab("general")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "general"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconFileDescription size={15} /> Datos Generales
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("detalle")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "detalle"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconListDetails size={15} /> Detalle
+                {detalles.length > 0 && (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === "detalle" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    {detalles.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ══ TAB: Datos Generales ══ */}
+            {activeTab === "general" && (
+              <div className="p-6 space-y-6">
 
         {/* ══ Datos del Cliente ══ */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <div>
           <SectionHeader icon={<IconShoppingCart size={16} />} title="Datos del Cliente" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="[&_*]:uppercase [&_input]:uppercase [&_span]:uppercase [&_li]:uppercase">
@@ -1188,7 +1228,7 @@ export default function CrearPedidoVentaPage() {
         </div>
 
         {/* ══ Entrega ══ */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <div>
           <SectionHeader icon={<IconTruck size={16} />} title="Entrega" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -1269,7 +1309,7 @@ export default function CrearPedidoVentaPage() {
         </div>
 
         {/* ══ Condiciones Comerciales ══ */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <div>
           <SectionHeader icon={<IconCoin size={16} />} title="Condiciones Comerciales" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -1366,79 +1406,13 @@ export default function CrearPedidoVentaPage() {
           </div>
         </div>
 
-        </div>{/* ── fin columna izquierda ── */}
-
-        {/* ── Columna derecha: Resumen ── */}
-        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="bg-slate-800 px-5 py-4">
-              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
-            </div>
-            <div className="p-5 space-y-4">
-
-              {/* Tipo cambio — solo visible para monedas distintas a Soles */}
-              {form.monedaId && form.monedaId !== "001" && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <IconCoin size={14} className="text-blue-500 shrink-0" />
-                  <span className="text-xs text-blue-700">
-                    Tipo de cambio (venta):{" "}
-                    <strong className="font-mono">
-                      {Number(form.tipo_cambio ?? 1).toFixed(3)}
-                    </strong>
-                  </span>
-                </div>
-              )}
-
-              <div className="border-t border-slate-100 pt-4 space-y-3">
-                {/* Gravado */}
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Gravado</span>
-                  <span className="text-base font-mono font-bold text-slate-800">
-                    {monedaLabel} {formatMoney(resumen.gravado)}
-                  </span>
-                </div>
-                {/* Exonerado */}
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Exonerado</span>
-                  <span className="text-base font-mono font-bold text-slate-800">
-                    {monedaLabel} {formatMoney(resumen.exonerado)}
-                  </span>
-                </div>
-                {/* Gratuito */}
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Gratuito</span>
-                  <span className="text-base font-mono font-bold text-slate-800">
-                    {monedaLabel} {formatMoney(resumen.gratuito)}
-                  </span>
-                </div>
-                {/* IGV */}
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-xs font-semibold text-slate-500 uppercase">IGV (18%)</span>
-                  <span className="text-base font-mono font-bold text-slate-800">
-                    {monedaLabel} {formatMoney(resumen.igv)}
-                  </span>
-                </div>
               </div>
+            )}
 
-              {/* Total */}
-              <div className="border-t-2 border-blue-600 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
-                  <span className="text-2xl font-bold font-mono text-blue-700">
-                    {monedaLabel} {formatMoney(resumen.total)}
-                  </span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>{/* ── fin columna derecha ── */}
-
-      </div>{/* ── fin grid ── */}
-
-      {/* ══ Detalle de Ítems ══ */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mt-6">
-        <SectionHeader icon={<IconListDetails size={16} />} title="Detalle de Ítems" />
+            {/* ══ TAB: Detalle ══ */}
+            {activeTab === "detalle" && (
+              <div className="p-6">
+                <SectionHeader icon={<IconListDetails size={16} />} title="Detalle de Ítems" />
 
         {/* ── Barra: lista de precios + stock ── */}
         <div className="flex items-center justify-end gap-2 mb-3 -mt-2">
@@ -1711,7 +1685,81 @@ export default function CrearPedidoVentaPage() {
         <p className="text-[10px] text-slate-400 mt-2 italic">
           * El importe es referencial. El cálculo final de IGV y totales lo realiza el servidor.
         </p>
-      </div>
+              </div>
+            )}
+
+          </div>
+        </div>{/* ── fin columna izquierda ── */}
+
+        {/* ── Columna derecha: Resumen ── */}
+        {activeTab === "general" && (
+        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-800 px-5 py-4">
+              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
+            </div>
+            <div className="p-5 space-y-4">
+
+              {/* Tipo cambio — solo visible para monedas distintas a Soles */}
+              {form.monedaId && form.monedaId !== "001" && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <IconCoin size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-xs text-blue-700">
+                    Tipo de cambio (venta):{" "}
+                    <strong className="font-mono">
+                      {Number(form.tipo_cambio ?? 1).toFixed(3)}
+                    </strong>
+                  </span>
+                </div>
+              )}
+
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                {/* Gravado */}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Gravado</span>
+                  <span className="text-base font-mono font-bold text-slate-800">
+                    {monedaLabel} {formatMoney(resumen.gravado)}
+                  </span>
+                </div>
+                {/* Exonerado */}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Exonerado</span>
+                  <span className="text-base font-mono font-bold text-slate-800">
+                    {monedaLabel} {formatMoney(resumen.exonerado)}
+                  </span>
+                </div>
+                {/* Gratuito */}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase">Total Gratuito</span>
+                  <span className="text-base font-mono font-bold text-slate-800">
+                    {monedaLabel} {formatMoney(resumen.gratuito)}
+                  </span>
+                </div>
+                {/* IGV */}
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase">IGV (18%)</span>
+                  <span className="text-base font-mono font-bold text-slate-800">
+                    {monedaLabel} {formatMoney(resumen.igv)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="border-t-2 border-blue-600 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
+                  <span className="text-2xl font-bold font-mono text-blue-700">
+                    {monedaLabel} {formatMoney(resumen.total)}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+        )}{/* ── fin columna derecha ── */}
+
+      </div>{/* ── fin grid ── */}
 
       {showStock && nuevoDetalle.bienId && (
         <StockDisponible

@@ -108,7 +108,7 @@ export interface DocumentoVenta {
   trabajadorId?: string;
   detraccion: boolean;
   valorventa_afecto: number;
-  valorventa_inafecto: number;
+  valorventa_exonerado: number;
   igv: number;
   total: number;
   saldo: number;
@@ -143,6 +143,9 @@ export interface DocumentoVenta {
   anticipo_importe?: number;
   estado_almacen?: string;
   codigo_auditoria?: string;
+  anticipo_saldo_afecto?: number;
+  anticipo_saldo_exonerado?: number;
+  total_base_anticipo?: number;
 
   tipoDocumentoComercial?: TipoDocumentoComercial;
   moneda?: Moneda;
@@ -283,7 +286,7 @@ export interface CreateDocumentoVentaDTO {
   trabajadorId?: string;
   detraccion?: boolean;
   valorventaAfecto?: number;
-  valorventaInafecto?: number;
+  valorventaExonerado?: number;
   igv?: number;
   total?: number;
   saldo?: number;
@@ -299,6 +302,8 @@ export interface CreateDocumentoVentaDTO {
   totalLetras?: string;
   motivoelectronicoId?: string;
   documentoventaReferenciaId?: string;
+  /** IDs de todos los documentoventa de tipo anticipo aplicados a este documento */
+  anticipos?: string[];
   valorFirma?: string;
   formaspagoId?: string;
   estadoDocumentoSunat?: string;
@@ -316,6 +321,9 @@ export interface CreateDocumentoVentaDTO {
   documentoComoAnticipo?: string;
   anticipoImporte?: number;
   estadoAlmacen?: string;
+  anticipoSaldoAfecto?: number;
+  anticipoSaldoExonerado?: number;
+  totalBaseAnticipo?: number;
   detalles: CreateDocumentoVentaDetalleDTO[];
 }
 

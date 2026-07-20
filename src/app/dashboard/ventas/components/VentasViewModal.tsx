@@ -375,10 +375,10 @@ export default function DocumentoVentaViewModal({
               </div>
               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
                 <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                  Valor Venta Inafecto
+                  Valor Venta Exonerado
                 </span>
                 <span className="text-sm font-bold text-slate-800 font-mono">
-                  {formatearMoneda(documento.valorventa_inafecto, documento.monedaId)}
+                  {formatearMoneda(documento.valorventa_exonerado, documento.monedaId)}
                 </span>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">

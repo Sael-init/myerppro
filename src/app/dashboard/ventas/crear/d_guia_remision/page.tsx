@@ -28,6 +28,8 @@ import DateInput from "@/components/forms/DateInput";
 import clienteService from "@/services/clienteService";
 import { guiaRemisionService } from "@/services/guiaRemisionService";
 import documentoVentaService from "@/services/DocumentoventaService";
+import { notaSalidaService } from "@/services/notaSalidaService";
+import { buildNotaSalidaPayload } from "../notaSalidaHelper";
 import type { GuiaRemisionPayload, GuiaRemisionDetalle } from "@/types/guiaRemision.types";
 import type { FormDropdownsDocumentoVenta } from "@/types/Documentoventa.types";
 
@@ -37,9 +39,10 @@ const TIPO_DOC_GUIA      = "X029";
 const TIPO_MOVIMIENTO_GR = "S";
 const TENANT_ID          = "1";
 const IGV_PORCENTAJE     = 0.18;
+const CUENTA_USUARIO_ID  = "CU0002";
 
 function computeTotales(dets: any[]) {
-  let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0;
+  let valorventaAfecto = 0, valorventaExonerado = 0, igvTotal = 0;
   dets.forEach((det: any) => {
     const subtotal = det.cantidad * det.precio - (det.descuentoProducto || 0);
     if (det.afectoInafecto) {
@@ -47,15 +50,15 @@ function computeTotales(dets: any[]) {
       valorventaAfecto += base;
       igvTotal         += subtotal - base;
     } else {
-      valorventaInafecto += subtotal;
+      valorventaExonerado += subtotal;
     }
   });
-  const total = valorventaAfecto + igvTotal + valorventaInafecto;
+  const total = valorventaAfecto + igvTotal + valorventaExonerado;
   return {
-    valorventaAfecto:   Math.round(valorventaAfecto   * 100) / 100,
-    valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
-    igv:                Math.round(igvTotal           * 100) / 100,
-    total:              Math.round(total              * 100) / 100,
+    valorventaAfecto:    Math.round(valorventaAfecto   * 100) / 100,
+    valorventaExonerado: Math.round(valorventaExonerado * 100) / 100,
+    igv:                 Math.round(igvTotal           * 100) / 100,
+    total:               Math.round(total              * 100) / 100,
   };
 }
 
@@ -412,20 +415,33 @@ export default function GuiaRemisionPage() {
       const detraccionMonto = dVentaForm.detraccion
         ? Math.round(totales.total * ((dVentaForm.detraccionPorcentaje || 0) / 100) * 100) / 100
         : 0;
+      const esAnticipo = !!(dVentaForm as any).esAnticipo;
 
       const combinedDto = {
         ...(dVentaForm as any),
-        valorventaAfecto:   totales.valorventaAfecto,
-        valorventaInafecto: totales.valorventaInafecto,
-        igv:                totales.igv,
-        total:              totales.total,
-        saldo:              totales.total,
+        valorventaAfecto:    totales.valorventaAfecto,
+        valorventaExonerado: totales.valorventaExonerado,
+        igv:                 totales.igv,
+        total:               totales.total,
+        saldo:               totales.total,
         detraccionMonto,
-        detalles:           detalles as any,
-        guiaRemision:       buildPayload(),
+        // Montos SIN IGV (base imponible); el IGV se recalcula aparte al consumir el anticipo.
+        documentoComoAnticipo:  esAnticipo ? "SI" : "NO",
+        totalBaseAnticipo:      esAnticipo ? Math.round((totales.valorventaAfecto + totales.valorventaExonerado) * 100) / 100 : undefined,
+        anticipoSaldoAfecto:    esAnticipo ? totales.valorventaAfecto : undefined,
+        anticipoSaldoExonerado: esAnticipo ? totales.valorventaExonerado : undefined,
+        // El backend declara List<string> Anticipos como no-nullable ([Required] implícito);
+        // hay que enviarlo siempre, vacío [] cuando no se consume ningún anticipo (este flujo
+        // de guía no permite aplicar anticipos existentes).
+        anticipos:              [] as string[],
+        detalles:               detalles as any,
+        guiaRemision:            buildPayload(),
       };
 
       const res = await documentoVentaService.crearConGuiaRemision(combinedDto);
+      // TODO temporal: confirmar la forma real de la respuesta de DocumentoConGuiaRemision
+      // para saber de qué campo leer el documentoVentaId. Borrar una vez confirmado.
+      console.log("[NotaSalida][debug] respuesta de crearConGuiaRemision:", res);
 
       const dvGuardado =
         (Array.isArray(res.documentosVentaIds) && res.documentosVentaIds.length > 0) ||
@@ -441,6 +457,36 @@ export default function GuiaRemisionPage() {
       res.isSuccess
         ? toast.success(`${cantDV} DV + Guía creados y enviados a SUNAT`)
         : toast.warning(`Guardado con advertencias: ${res.message ?? "revisar"}`);
+
+      // ── Nota de Salida automática ────────────────────────────────────────────
+      // Solo si el checkbox "Nota Salida" está marcado y la factura ya fue
+      // emitida (res.isSuccess = aceptada por SUNAT) — no si solo quedó guardada
+      // en BD con advertencias/pendiente.
+      if ((dVentaForm as any).notaSalida && res.isSuccess) {
+        try {
+          // Acepta camelCase y PascalCase por si la respuesta del endpoint combinado
+          // (DocumentoConGuiaRemision) serializa distinto a DV_EnvioSunat.
+          const docRefNumero =
+            res.documentoVentaId ??
+            res.DocumentoVentaId ??
+            (Array.isArray(res.documentosVentaIds) ? res.documentosVentaIds[0] : undefined) ??
+            (Array.isArray(res.DocumentosVentaIds) ? res.DocumentosVentaIds[0] : undefined);
+          const notaSalidaPayload = buildNotaSalidaPayload({
+            empresaId:            EMPRESA_ID,
+            cuentaUsuarioDefault: CUENTA_USUARIO_ID,
+            dVentaForm:           dVentaForm as any,
+            guiaForm:             form,
+            detalles:             detalles as any,
+            docReferenciaNumero:  docRefNumero,
+          });
+          const nsRes = await notaSalidaService.create(notaSalidaPayload);
+          nsRes.isSuccess
+            ? toast.success("Nota de Salida generada")
+            : toast.warning(`DV + Guía guardados, pero la Nota de Salida no se pudo crear: ${nsRes.message ?? "revisar"}`);
+        } catch (errNS: any) {
+          toast.warning(`DV + Guía guardados, pero la Nota de Salida no se pudo crear: ${errNS.message ?? "error desconocido"}`);
+        }
+      }
 
       resetAll();
       router.push("/dashboard/ventas");

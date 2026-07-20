@@ -54,6 +54,8 @@ import {
   IconUserPlus,
   IconFileImport,
   IconArrowLeft,
+  IconFileDescription,
+  IconListDetails,
 } from "@tabler/icons-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,6 +357,7 @@ function CrearNotaCreditoContent() {
   const [bienCache,         setBienCache]         = useState<Record<string, Producto>>({});
   const [motivosNcNd,       setMotivosNcNd]       = useState<Array<{ motivoelectronicoId: string; tipodocumento: string; concepto: string }>>([]);
   const [igvPorcentaje,     setIgvPorcentaje]     = useState(0.18);
+  const [activeTab,         setActiveTab]         = useState<"general" | "detalle">("general");
 
   const today = (() => {
     const d = new Date();
@@ -697,7 +700,7 @@ function CrearNotaCreditoContent() {
   }, [formData.condicionPago, condicionesPago]);
 
   const totales = useMemo(() => {
-    let valorventaAfecto = 0, valorventaInafecto = 0, igvTotal = 0, gratuito = 0;
+    let valorventaAfecto = 0, valorventaExonerado = 0, igvTotal = 0, gratuito = 0;
     (detalles as any[]).forEach((det: any) => {
       const subtotal = det.cantidad * det.precio - (det.descuentoProducto || 0);
       if (isCondicionGratuita) {
@@ -707,18 +710,18 @@ function CrearNotaCreditoContent() {
         valorventaAfecto += base;
         igvTotal         += subtotal - base;
       } else {
-        valorventaInafecto += subtotal;
+        valorventaExonerado += subtotal;
       }
     });
-    const total = valorventaAfecto + igvTotal + valorventaInafecto;
+    const total = valorventaAfecto + igvTotal + valorventaExonerado;
     return {
-      valorventaAfecto:   Math.round(valorventaAfecto   * 100) / 100,
-      valorventaInafecto: Math.round(valorventaInafecto * 100) / 100,
-      igv:                Math.round(igvTotal           * 100) / 100,
-      total:              Math.round(total              * 100) / 100,
-      gravado:            Math.round(valorventaAfecto   * 100) / 100,
-      exonerado:          Math.round(valorventaInafecto * 100) / 100,
-      gratuito:           Math.round(gratuito           * 100) / 100,
+      valorventaAfecto:    Math.round(valorventaAfecto   * 100) / 100,
+      valorventaExonerado: Math.round(valorventaExonerado * 100) / 100,
+      igv:                 Math.round(igvTotal           * 100) / 100,
+      total:               Math.round(total              * 100) / 100,
+      gravado:             Math.round(valorventaAfecto   * 100) / 100,
+      exonerado:           Math.round(valorventaExonerado * 100) / 100,
+      gratuito:            Math.round(gratuito           * 100) / 100,
     };
   }, [detalles, isCondicionGratuita, igvPorcentaje]);
 
@@ -754,7 +757,7 @@ function CrearNotaCreditoContent() {
         numero:               siguienteNumero || undefined,
         motivoelectronicoId:  formData.motivoelectronicoId || undefined,
         valorventaAfecto:     totales.valorventaAfecto,
-        valorventaInafecto:   totales.valorventaInafecto,
+        valorventaExonerado:  totales.valorventaExonerado,
         igv:                  totales.igv,
         total:                totales.total,
         saldo:                totales.total,
@@ -936,10 +939,50 @@ function CrearNotaCreditoContent() {
 
       {/* ── Grid principal ── */}
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 lg:col-span-8 space-y-6">
+
+        {/* ── Columna izquierda: panel con tabs ── */}
+        <div className={`col-span-12 ${activeTab === "detalle" ? "" : "lg:col-span-8"}`}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setActiveTab("general")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "general"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconFileDescription size={15} /> Datos Generales
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("detalle")}
+                className={`flex items-center gap-2 px-6 py-3.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                  activeTab === "detalle"
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <IconListDetails size={15} /> Detalle
+                {detalles.length > 0 && (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === "detalle" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    {detalles.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ══ TAB: Datos Generales ══ */}
+            {activeTab === "general" && (
+              <div className="p-6 space-y-6">
 
           {/* ── Datos del Documento ── */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <div>
             <SectionTitle title="Datos del Documento" icon={IconFileInvoice} />
 
             {/* Tipo documento */}
@@ -1080,7 +1123,7 @@ function CrearNotaCreditoContent() {
           </div>
 
           {/* ── Condiciones de Pago ── */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <div>
             <SectionTitle title="Condiciones de Pago" icon={IconCalendar} />
             <div className="space-y-4">
 
@@ -1163,41 +1206,13 @@ function CrearNotaCreditoContent() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* ── Columna derecha: Resumen ── */}
-        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="bg-slate-800 px-5 py-4">
-              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="border-t border-slate-100 pt-4 space-y-3">
-                {[
-                  { label: "Total Gravado",   val: totales.gravado   },
-                  { label: "Total Exonerado", val: totales.exonerado },
-                  { label: "Total Gratuito",  val: totales.gratuito  },
-                  { label: `IGV (${Math.round(igvPorcentaje * 100)}%)`, val: totales.igv },
-                ].map(({ label, val }) => (
-                  <div key={label} className="flex justify-between items-center py-1">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">{label}</span>
-                    <span className="text-base font-mono font-bold text-slate-800">{monedaLabel} {formatMoney(val)}</span>
-                  </div>
-                ))}
               </div>
-              <div className="border-t-2 border-blue-600 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
-                  <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totales.total)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            )}
 
-      {/* ── Detalles del Documento ── */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-6">
+            {/* ══ TAB: Detalle ══ */}
+            {activeTab === "detalle" && (
+              <div className="p-6">
         <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-4 mt-2">
           <div className="flex items-center gap-2 text-slate-800">
             <IconReceipt className="text-blue-600" size={20} />
@@ -1379,6 +1394,44 @@ function CrearNotaCreditoContent() {
             </tbody>
           </table>
         </div>
+              </div>
+            )}
+
+          </div>
+        </div>{/* ── fin columna izquierda ── */}
+
+        {/* ── Columna derecha: Resumen ── */}
+        {activeTab === "general" && (
+        <div className="col-span-12 lg:col-span-4 self-start sticky top-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-800 px-5 py-4">
+              <h3 className="text-white font-bold text-base uppercase tracking-wide">Resumen</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                {[
+                  { label: "Total Gravado",   val: totales.gravado   },
+                  { label: "Total Exonerado", val: totales.exonerado },
+                  { label: "Total Gratuito",  val: totales.gratuito  },
+                  { label: `IGV (${Math.round(igvPorcentaje * 100)}%)`, val: totales.igv },
+                ].map(({ label, val }) => (
+                  <div key={label} className="flex justify-between items-center py-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">{label}</span>
+                    <span className="text-base font-mono font-bold text-slate-800">{monedaLabel} {formatMoney(val)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t-2 border-blue-600 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
+                  <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totales.total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        )}
+
       </div>
 
       {showStock && (nuevoDetalle as any).bienId && (

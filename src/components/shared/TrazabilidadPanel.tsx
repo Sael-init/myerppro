@@ -174,7 +174,7 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
 
   // Totales
   const afecto   = type === "cotizacion" ? data.cotizacion_valorventa_afecto   : data.valorventa_afecto;
-  const inafecto = type === "cotizacion" ? data.cotizacion_valorventa_inafecto  : data.valorventa_inafecto;
+  const inafecto = type === "cotizacion" ? data.cotizacion_valorventa_inafecto  : (data.valorventa_exonerado ?? data.valorventa_inafecto);
   const igv      = type === "cotizacion" ? data.cotizacion_igv                  : data.igv;
   const total    = type === "cotizacion" ? data.cotizacion_total                : data.total;
   const saldo    = type === "cotizacion" ? data.cotizacion_saldo                : data.saldo;
