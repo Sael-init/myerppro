@@ -111,9 +111,10 @@ const CUENTA_USUARIO_ID = "CU0002";
 const TIPO_SOLO_RUC = ["X028"];
 const TIPO_SOLO_DNI = ["X007", "X077"];
 
-// Bien usado para emitir un documento COMO anticipo (ANTICIPO AFECTO). Cuando el checkbox
-// "es anticipo" está marcado, el detalle solo debe poder cargar este producto.
-const BIEN_ANTICIPO_AFECTO = "00001399";
+// Bienes usados para emitir un documento COMO anticipo (ANTICIPO AFECTO / EXONERADO). Cuando
+// el checkbox "es anticipo" está marcado, el detalle solo debe poder cargar estos productos.
+const BIEN_ANTICIPO_AFECTO    = "00001399";
+const BIEN_ANTICIPO_EXONERADO = "00001401";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Componentes auxiliares
@@ -733,7 +734,7 @@ function CrearDocumentoVentaContent() {
     // ANTICIPO AFECTO — no tiene sentido facturar un anticipo con productos normales.
     if ((formData as any).esAnticipo) {
       return catalogs.bienes
-        .filter((b) => String(b.key) === BIEN_ANTICIPO_AFECTO)
+        .filter((b) => String(b.key) === BIEN_ANTICIPO_AFECTO || String(b.key) === BIEN_ANTICIPO_EXONERADO)
         .map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
     }
     const base = catalogs.bienes.map((b) => ({ key: String(b.key), value: (b as any).value || String(b.key) }));
@@ -868,60 +869,32 @@ function CrearDocumentoVentaContent() {
   // Reparto del anticipo aplicado entre "afecto" (base sin IGV), "IGV" y "exonerado", para
   // poder descontarlo directamente de esas líneas del resumen en vez de mostrar un único
   // descuento genérico sobre el total. Se toman los montos reales del propio anticipo
-  // (valorventa_afecto/igv/valorventa_exonerado, o su "saldo" si el backend ya trae el saldo
-  // disponible actualizado tras consumos previos) — NO se reconstruyen con una fórmula del
-  // 18%, porque el saldo disponible no es simplemente el total con IGV incluido.
-  // Solo es posible repartirlo sin ambigüedad cuando el detalle es enteramente gravado
-  // (o enteramente exonerado); si hay mezcla (o el detalle está vacío) se usa un único
-  // descuento sobre el total (total_base_anticipo / total del anticipo).
+  // (anticipo_saldo_afecto/igv/anticipo_saldo_exonerado, con fallback a valorventa_*) — NO se
+  // reconstruyen con una fórmula del 18%, porque el saldo disponible no es simplemente el
+  // total con IGV incluido. Se descuenta siempre, sin importar si el detalle de ESTE
+  // documento mezcla ítems gravados y exonerados — la mezcla del detalle no afecta el saldo
+  // real del anticipo que se está consumiendo.
   const anticipoSplit = useMemo(() => {
-    if (anticiposAplicados.length === 0) return { afectoBase: 0, igv: 0, exonerado: 0, esSplitApto: false };
-    const hasGravado   = totales.gravado   > 0;
-    const hasExonerado = totales.exonerado > 0;
+    const afectoBase = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0), 0);
+    const igv         = anticiposAplicados.reduce((acc, a: any) => acc + (a.igv ?? 0), 0);
+    const exonerado   = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0), 0);
+    return {
+      afectoBase: Math.round(afectoBase * 100) / 100,
+      igv:        Math.round(igv * 100) / 100,
+      exonerado:  Math.round(exonerado * 100) / 100,
+    };
+  }, [anticiposAplicados]);
 
-    if (hasGravado && !hasExonerado) {
-      const afectoBase = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0), 0);
-      const igv         = anticiposAplicados.reduce((acc, a: any) => acc + (a.igv ?? 0), 0);
-      return {
-        afectoBase: Math.round(afectoBase * 100) / 100,
-        igv:        Math.round(igv * 100) / 100,
-        exonerado:  0,
-        esSplitApto: true,
-      };
-    }
-    if (hasExonerado && !hasGravado) {
-      const exonerado = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0), 0);
-      return { afectoBase: 0, igv: 0, exonerado: Math.round(exonerado * 100) / 100, esSplitApto: true };
-    }
-    return { afectoBase: 0, igv: 0, exonerado: 0, esSplitApto: false };
-  }, [anticiposAplicados, totales.gravado, totales.exonerado]);
-
-  // Monto total del anticipo aplicado a este documento: la suma de las partes repartidas
-  // arriba, o (cuando la mezcla de ítems no permite repartirlo) el total del anticipo.
+  // Monto total del anticipo aplicado a este documento (afecto + IGV + exonerado).
   const totalAnticipoAplicado = useMemo(() => {
     if (anticiposAplicados.length === 0) return null;
-    if (anticipoSplit.esSplitApto) {
-      return Math.round((anticipoSplit.afectoBase + anticipoSplit.igv + anticipoSplit.exonerado) * 100) / 100;
-    }
-    return Math.round(
-      anticiposAplicados.reduce((acc, a: any) => acc + (a.total_base_anticipo ?? a.total ?? 0), 0) * 100
-    ) / 100;
+    return Math.round((anticipoSplit.afectoBase + anticipoSplit.igv + anticipoSplit.exonerado) * 100) / 100;
   }, [anticiposAplicados, anticipoSplit]);
 
   // Base (sin IGV) de los anticipos consumidos por este documento: afecto + exonerado.
-  // Cuando la mezcla de ítems no permite un reparto exacto (esSplitApto = false), se usa
-  // la base de cada anticipo (total_base_anticipo, que también se guarda sin IGV).
   const totalBaseAnticipoConsumido = useMemo(() => {
     if (anticiposAplicados.length === 0) return undefined;
-    if (anticipoSplit.esSplitApto) {
-      return Math.round((anticipoSplit.afectoBase + anticipoSplit.exonerado) * 100) / 100;
-    }
-    return Math.round(
-      anticiposAplicados.reduce(
-        (acc, a: any) => acc + (a.total_base_anticipo ?? (a.valorventa_afecto ?? 0) + (a.valorventa_exonerado ?? 0)),
-        0
-      ) * 100
-    ) / 100;
+    return Math.round((anticipoSplit.afectoBase + anticipoSplit.exonerado) * 100) / 100;
   }, [anticiposAplicados, anticipoSplit]);
 
   // Total final de la factura: el total calculado del detalle menos el anticipo aplicado.
@@ -933,11 +906,20 @@ function CrearDocumentoVentaContent() {
   // Valores netos (descontado el anticipo) para el encabezado de la factura: gravado, exonerado
   // e IGV que realmente quedan por cobrar. El DETALLE (líneas del documento) no se toca — se
   // envía tal cual, con los montos originales de cada ítem.
-  const totalesNetosAnticipo = useMemo(() => ({
-    valorventaAfecto:    Math.round(Math.max(0, totales.valorventaAfecto    - anticipoSplit.afectoBase) * 100) / 100,
-    valorventaExonerado: Math.round(Math.max(0, totales.valorventaExonerado - anticipoSplit.exonerado)  * 100) / 100,
-    igv:                 Math.round(Math.max(0, totales.igv                - anticipoSplit.igv)         * 100) / 100,
-  }), [totales, anticipoSplit]);
+  //
+  // El anticipo NO se resta bucket-a-bucket (afecto contra afecto, exonerado contra exonerado):
+  // el anticipo se registra con un bien "placeholder" (ANTICIPO AFECTO/EXONERADO) cuyo tipo no
+  // tiene por qué coincidir con el tipo de los bienes de ESTA venta (p.ej. anticipo exonerado
+  // aplicado a una venta 100% gravada). Por eso se neta el TOTAL primero y luego se escala
+  // proporcionalmente afecto/exonerado/igv, así siempre siguen sumando el total neto.
+  const totalesNetosAnticipo = useMemo(() => {
+    const factor = totales.total > 0 ? totalFacturaFinal / totales.total : 0;
+    return {
+      valorventaAfecto:    Math.round(totales.valorventaAfecto    * factor * 100) / 100,
+      valorventaExonerado: Math.round(totales.valorventaExonerado * factor * 100) / 100,
+      igv:                 Math.round(totales.igv                * factor * 100) / 100,
+    };
+  }, [totales, totalFacturaFinal]);
 
   // Campos de encabezado propios de un documento emitido "como anticipo": la base
   // (total_base_anticipo) y el saldo inicial disponible (afecto/exonerado) para
@@ -2135,10 +2117,10 @@ function CrearDocumentoVentaContent() {
             <div className="p-5 space-y-4">
               <div className="border-t border-slate-100 pt-4 space-y-3">
                 {[
-                  { label: "Total Gravado",   val: totalesNetosAnticipo.valorventaAfecto,    descontado: anticipoSplit.afectoBase > 0 },
-                  { label: "Total Exonerado", val: totalesNetosAnticipo.valorventaExonerado, descontado: anticipoSplit.exonerado > 0 },
+                  { label: "Total Gravado",   val: totalesNetosAnticipo.valorventaAfecto,    descontado: (totalAnticipoAplicado ?? 0) > 0 },
+                  { label: "Total Exonerado", val: totalesNetosAnticipo.valorventaExonerado, descontado: (totalAnticipoAplicado ?? 0) > 0 },
                   { label: "Total Gratuito",  val: totales.gratuito, descontado: false },
-                  { label: "IGV (18%)",       val: totalesNetosAnticipo.igv,                 descontado: anticipoSplit.igv > 0 },
+                  { label: "IGV (18%)",       val: totalesNetosAnticipo.igv,                 descontado: (totalAnticipoAplicado ?? 0) > 0 },
                 ].map(({ label, val, descontado }) => (
                   <div key={label} className="flex justify-between items-center py-1">
                     <span className="text-xs font-semibold text-slate-500 uppercase">
@@ -2156,22 +2138,12 @@ function CrearDocumentoVentaContent() {
               )}
               <div className="border-t-2 border-blue-600 pt-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-700 uppercase">
-                    {totalAnticipoAplicado != null && !anticipoSplit.esSplitApto ? "Subtotal" : "Total"}
-                  </span>
-                  <span className={`font-bold font-mono text-blue-700 ${totalAnticipoAplicado != null && !anticipoSplit.esSplitApto ? "text-base" : "text-2xl"}`}>
-                    {monedaLabel} {formatMoney(anticipoSplit.esSplitApto ? totalFacturaFinal : totales.total)}
+                  <span className="text-sm font-bold text-slate-700 uppercase">Total</span>
+                  <span className="text-2xl font-bold font-mono text-blue-700">
+                    {monedaLabel} {formatMoney(totalFacturaFinal)}
                   </span>
                 </div>
               </div>
-              {totalAnticipoAplicado != null && !anticipoSplit.esSplitApto && (
-                <div className="border-t-2 border-blue-600 pt-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-slate-700 uppercase">Total a Pagar</span>
-                    <span className="text-2xl font-bold font-mono text-blue-700">{monedaLabel} {formatMoney(totalFacturaFinal)}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

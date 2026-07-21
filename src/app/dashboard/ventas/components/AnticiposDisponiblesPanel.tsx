@@ -134,7 +134,8 @@ export default function AnticiposDisponiblesPanel({
       const soloAnticipos = (res.data ?? []).filter(
         (d: any) =>
           (d.documento_como_anticipo ?? "").toUpperCase() === "SI" &&
-          (d.estado ?? "").toUpperCase() !== "ANULADO"
+          (d.estado ?? "").toUpperCase() !== "ANULADO" &&
+          String(d.clienteId) === String(clienteId)
       );
       setAnticipos(soloAnticipos);
     } catch (err: any) {
@@ -289,9 +290,9 @@ export default function AnticiposDisponiblesPanel({
                   <th className="px-4 py-3 w-10"></th>
                   <th className="px-4 py-3 w-32">Documento</th>
                   <th className="px-4 py-3 w-28">Fecha Emisión</th>
-                  <th className="px-4 py-3 text-right w-28">Gravado</th>
+                  <th className="px-4 py-3 text-right w-28">Saldo Afecto</th>
                   <th className="px-4 py-3 text-right w-28">IGV</th>
-                  <th className="px-4 py-3 text-right w-28">Exonerado</th>
+                  <th className="px-4 py-3 text-right w-28">Saldo Exonerado</th>
                   <th className="px-4 py-3 text-right w-32">Importe</th>
                   <th className="px-4 py-3 text-center w-24">Estado</th>
                 </tr>
