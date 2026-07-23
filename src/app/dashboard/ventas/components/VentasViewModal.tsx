@@ -15,6 +15,7 @@ import {
   IconInfoCircle,
   IconShieldCheck,
   IconReceipt,
+  IconCashBanknote,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { DocumentoVenta } from "@/types/Documentoventa.types";
@@ -602,6 +603,81 @@ export default function DocumentoVentaViewModal({
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-slate-800 font-mono">
                         {formatearMoneda(documento.total, documento.monedaId)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Section>
+          )}
+
+          {/* ═══════════════════════════════════════════
+              ANTICIPOS APLICADOS
+             ═══════════════════════════════════════════ */}
+          {documento.anticipos && documento.anticipos.length > 0 && (
+            <Section title={`Anticipos Aplicados (${documento.anticipos.length})`} icon={IconCashBanknote}>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="px-3 py-2.5 text-left font-bold text-slate-600">
+                        Documento
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-bold text-slate-600">
+                        Saldo Afecto
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-bold text-slate-600">
+                        Saldo Exonerado
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-bold text-slate-600">
+                        Base
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-bold text-slate-600">
+                        IGV
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-bold text-slate-600">
+                        Importe Aplicado
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {documento.anticipos.map((a, idx) => (
+                      <tr
+                        key={`${a.serie}-${a.numero}-${idx}`}
+                        className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-3 py-2 font-mono font-semibold text-slate-800">
+                          {a.serie}-{a.numero}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono">
+                          {formatearMoneda(a.anticipoSaldoAfecto, documento.monedaId)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono">
+                          {formatearMoneda(a.anticipoSaldoExonerado, documento.monedaId)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-500">
+                          {formatearMoneda(a.importeBaseAnticipo, documento.monedaId)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-500">
+                          {formatearMoneda(a.importeIgvAnticipo, documento.monedaId)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800">
+                          {formatearMoneda(a.importeAnticipo, documento.monedaId)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr>
+                      <td className="px-3 py-2.5 text-right font-bold text-slate-600 text-xs uppercase">
+                        Total:
+                      </td>
+                      <td colSpan={4}></td>
+                      <td className="px-3 py-2.5 text-right font-bold text-slate-800 font-mono">
+                        {formatearMoneda(
+                          documento.anticipos.reduce((acc, a) => acc + (a.importeAnticipo ?? 0), 0),
+                          documento.monedaId
+                        )}
                       </td>
                     </tr>
                   </tfoot>

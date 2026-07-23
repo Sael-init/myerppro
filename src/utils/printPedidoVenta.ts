@@ -45,7 +45,7 @@ export function generarHtmlPedidoVenta(pv: any, detalle: any[], logoUrl: string)
         : "-";
       const importe = fmt(det.importe ?? (det.cantidad ?? 0) * (det.precio ?? 0));
       const igvCell = det.afecto_inafecto === false
-        ? `<span style="color:#b45309;font-weight:700">Inafecto</span>`
+        ? `<span style="color:#b45309;font-weight:700">Exonerado</span>`
         : `<span style="color:#15803d;font-weight:700">Afecto</span>`;
       return `
         <tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
@@ -185,7 +185,7 @@ export function generarHtmlPedidoVenta(pv: any, detalle: any[], logoUrl: string)
             <td style="padding:3px 8px;font-size:8pt;border-bottom:1px solid #f0f0f0;text-align:right;font-family:monospace;font-weight:600;white-space:nowrap">${monedaSym} ${fmt(pv.valorventa_afecto)}</td>
           </tr>
           <tr>
-            <td style="padding:3px 8px;font-size:8pt;border-bottom:1px solid #f0f0f0">Vta. Inafecta</td>
+            <td style="padding:3px 8px;font-size:8pt;border-bottom:1px solid #f0f0f0">Vta. Exonerada</td>
             <td style="padding:3px 8px;font-size:8pt;border-bottom:1px solid #f0f0f0;text-align:right;font-family:monospace;font-weight:600;white-space:nowrap">${monedaSym} ${fmt(pv.valorventa_inafecto)}</td>
           </tr>
           ${(pv.valorventa_gratuito ?? 0) > 0 ? `

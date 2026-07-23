@@ -89,6 +89,20 @@ export interface DocumentoVentaDetalle {
 }
 
 // =====================================================
+// ANTICIPO APLICADO (GET, resumen dentro del documento)
+// =====================================================
+
+export interface DocumentoVentaAnticipo {
+  serie: string;
+  numero: string;
+  anticipoSaldoAfecto: number;
+  anticipoSaldoExonerado: number;
+  importeAnticipo: number;
+  importeBaseAnticipo: number;
+  importeIgvAnticipo: number;
+}
+
+// =====================================================
 // DOCUMENTO DE VENTA PRINCIPAL (GET)
 // =====================================================
 
@@ -158,6 +172,8 @@ export interface DocumentoVenta {
   sede?: Sede;
   motivoNcNd?: { tipoDocumento: string; concepto: string };
   detalles?: DocumentoVentaDetalle[];
+  /** Anticipos aplicados a este documento (resumen: saldo consumido, base e IGV) */
+  anticipos?: DocumentoVentaAnticipo[];
 }
 
 // =====================================================

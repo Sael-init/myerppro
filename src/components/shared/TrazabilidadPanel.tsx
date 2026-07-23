@@ -5,6 +5,7 @@ import {
   IconX, IconRoute, IconLoader,
   IconFileText, IconShoppingCart, IconFileInvoice,
   IconUser, IconCalendar, IconCurrencyDollar, IconReceipt,
+  IconCashBanknote,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import Modal from "@/components/ui/Modal";
@@ -18,7 +19,7 @@ interface Props {
   onClose: () => void;
 }
 
-type NodeType = "cotizacion" | "pedido" | "documento";
+type NodeType = "cotizacion" | "pedido" | "documento" | "anticipo";
 
 interface SelectedNode {
   type: NodeType;
@@ -134,6 +135,16 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
 
   // Configuración del header según tipo
   const cfgMap = {
+    anticipo: {
+      gradient:  "from-emerald-50 to-teal-50",
+      iconBg:    "bg-emerald-100",
+      iconColor: "text-emerald-600",
+      Icon:       IconCashBanknote,
+      typeLabel:  "Anticipo Aplicado",
+      title:      `${data.serie}-${data.numero}`,
+      badges:     null as React.ReactNode,
+      total:      data.importeAnticipo as number | null,
+    },
     cotizacion: {
       gradient:  "from-amber-50 to-yellow-50",
       iconBg:    "bg-amber-100",
@@ -180,10 +191,13 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
   const saldo    = type === "cotizacion" ? data.cotizacion_saldo                : data.saldo;
 
   const detalles: any[] = data.detalles ?? [];
+  // Solo los nodos "documento" traen anticipos aplicados (DOCUMENTO_VENTA_ANTICIPO_APLICADO).
+  const anticipos: any[] = parseJsonField(data.anticipos) ?? [];
 
   const modalTitle =
     type === "cotizacion" ? "Detalle de Cotización" :
     type === "pedido"     ? "Detalle de Pedido de Venta" :
+    type === "anticipo"   ? "Detalle del Anticipo Aplicado" :
                             "Detalle del Documento";
 
   return (
@@ -224,12 +238,19 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
         )}
 
         {/* Información */}
+        {(type !== "anticipo" || data.asientoContable || data.catalogo53Id) && (
         <Section title={
           type === "cotizacion" ? "Información de la Cotización" :
           type === "pedido"     ? "Información del Pedido" :
+          type === "anticipo"   ? "Información del Anticipo" :
                                   "Información del Documento"
         } icon={IconCalendar}>
           <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {type === "anticipo" && <>
+              <InfoField label="Asiento Contable" value={data.asientoContable} mono />
+              <InfoField label="Catálogo 53"      value={data.catalogo53Id} mono />
+            </>}
+
             {type === "cotizacion" && <>
               <InfoField label="Fecha de Emisión"     value={fmtFecha(data.cotizacion_fecha_emision)} />
               <InfoField label="Fecha de Vencimiento" value={fmtFecha(data.cotizacion_fecha_vencimiento)} />
@@ -266,8 +287,35 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
             </>}
           </dl>
         </Section>
+        )}
 
         {/* Totales */}
+        {type === "anticipo" ? (
+          <Section title="Totales del Anticipo" icon={IconCurrencyDollar}>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Saldo Afecto</span>
+                <span className="text-sm font-bold text-slate-800 font-mono">{fmt(data.anticipoSaldoAfecto)}</span>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Saldo Exonerado</span>
+                <span className="text-sm font-bold text-slate-800 font-mono">{fmt(data.anticipoSaldoExonerado)}</span>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Base</span>
+                <span className="text-sm font-bold text-slate-800 font-mono">{fmt(data.importeBaseAnticipo)}</span>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">IGV</span>
+                <span className="text-sm font-bold text-slate-800 font-mono">{fmt(data.importeIgvAnticipo)}</span>
+              </div>
+              <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                <span className="text-[10px] font-bold text-emerald-600 uppercase block">Importe Aplicado</span>
+                <span className="text-lg font-bold text-emerald-800 font-mono">{fmt(data.importeAnticipo)}</span>
+              </div>
+            </div>
+          </Section>
+        ) : (
         <Section title="Totales" icon={IconCurrencyDollar}>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {afecto != null && (
@@ -278,7 +326,7 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
             )}
             {inafecto != null && (
               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase block">Valor Venta Inafecto</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Valor Venta Exonerado</span>
                 <span className="text-sm font-bold text-slate-800 font-mono">{fmt(inafecto)}</span>
               </div>
             )}
@@ -306,6 +354,7 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
             )}
           </div>
         </Section>
+        )}
 
         {/* Tabla de ítems */}
         {detalles.length > 0 && (
@@ -356,6 +405,47 @@ function NodeDetailModal({ node, onClose }: { node: SelectedNode | null; onClose
                     </td>
                     <td className="px-3 py-2.5 text-right font-bold text-slate-800 font-mono">
                       {fmt(total)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Section>
+        )}
+
+        {/* Anticipos aplicados (solo nodos "documento") */}
+        {anticipos.length > 0 && (
+          <Section title={`Anticipos Aplicados (${anticipos.length})`} icon={IconCashBanknote}>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left font-bold text-slate-600">Documento</th>
+                    <th className="px-3 py-2.5 text-right font-bold text-slate-600">Saldo Afecto</th>
+                    <th className="px-3 py-2.5 text-right font-bold text-slate-600">Saldo Exonerado</th>
+                    <th className="px-3 py-2.5 text-right font-bold text-slate-600">Base</th>
+                    <th className="px-3 py-2.5 text-right font-bold text-slate-600">IGV</th>
+                    <th className="px-3 py-2.5 text-right font-bold text-slate-600">Importe Aplicado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anticipos.map((a: any, i: number) => (
+                    <tr key={`${a.serie}-${a.numero}-${i}`} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-2 font-mono font-semibold text-slate-800">{a.serie}-{a.numero}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(a.anticipoSaldoAfecto)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(a.anticipoSaldoExonerado)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(a.importeBaseAnticipo)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(a.importeIgvAnticipo)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800">{fmt(a.importeAnticipo)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                  <tr>
+                    <td className="px-3 py-2.5 text-right font-bold text-slate-600 text-xs uppercase">Total:</td>
+                    <td colSpan={4}></td>
+                    <td className="px-3 py-2.5 text-right font-bold text-slate-800 font-mono">
+                      {fmt(anticipos.reduce((acc, a) => acc + (a.importeAnticipo ?? 0), 0))}
                     </td>
                   </tr>
                 </tfoot>
@@ -489,6 +579,71 @@ function DocumentoCard({ doc, onClick, isSelected }: { doc: any; onClick: () => 
   );
 }
 
+function AnticipoCard({ anticipo, onClick, isSelected }: { anticipo: any; onClick: () => void; isSelected: boolean }) {
+  return (
+    <div
+      onClick={onClick}
+      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 w-[148px] shrink-0 cursor-pointer transition-all
+        ${isSelected
+          ? "border-emerald-400 bg-emerald-100 shadow-md ring-2 ring-emerald-300 ring-offset-1"
+          : "border-emerald-200 bg-emerald-50 hover:border-emerald-400 hover:shadow-sm"}`}
+    >
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isSelected ? "bg-emerald-200" : "bg-emerald-100"}`}>
+        <IconCashBanknote size={22} className="text-emerald-600" />
+      </div>
+      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">Anticipo</span>
+      <span className="font-bold text-xs text-slate-800 text-center font-mono leading-tight">
+        {anticipo.serie}-{anticipo.numero}
+      </span>
+      <div className="flex flex-col items-center gap-1 w-full">
+        <span className="text-[11px] font-semibold text-slate-700">
+          {fmtMonto(anticipo.importeAnticipo, anticipo.moneda_simbolo)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Documento + (si tiene anticipos aplicados) su columna de AnticipoCard al costado,
+// unidos por una flecha — mismo patrón visual que pedido → documentos.
+function DocumentoWithAnticipos({ d, monedaSimbolo, selectedId, onSelect }: {
+  d: any;
+  monedaSimbolo?: string;
+  selectedId: string | null;
+  onSelect: (node: SelectedNode) => void;
+}) {
+  const docData: any     = { ...d, moneda_simbolo: monedaSimbolo };
+  const docAnticipos: any[] = parseJsonField(d.anticipos) ?? [];
+  return (
+    <div className="flex items-center gap-0">
+      <DocumentoCard
+        doc={docData}
+        isSelected={selectedId === d.documentoventaId}
+        onClick={() => onSelect({ type: "documento", id: d.documentoventaId, data: docData })}
+      />
+      {docAnticipos.length > 0 && (
+        <>
+          <CurvedArrow />
+          <div className="flex flex-col gap-3">
+            {docAnticipos.map((a: any, k: number) => {
+              const antId   = `${d.documentoventaId ?? ""}-ant-${a.serie}-${a.numero}-${k}`;
+              const antData = { ...a, moneda_simbolo: monedaSimbolo };
+              return (
+                <AnticipoCard
+                  key={antId}
+                  anticipo={antData}
+                  isSelected={selectedId === antId}
+                  onClick={() => onSelect({ type: "anticipo", id: antId, data: antData })}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Vista en cadena ──────────────────────────────────────────────────────────
 
 function ChainView({ data, selectedId, onSelect }: {
@@ -528,17 +683,15 @@ function ChainView({ data, selectedId, onSelect }: {
                       <>
                         <CurvedArrow />
                         <div className="flex flex-col gap-3">
-                          {docs.map((d: any, j: number) => {
-                            const docData = { ...d, moneda_simbolo: data.moneda_simbolo };
-                            return (
-                              <DocumentoCard
-                                key={d.documentoventaId ?? j}
-                                doc={docData}
-                                isSelected={selectedId === d.documentoventaId}
-                                onClick={() => onSelect({ type: "documento", id: d.documentoventaId, data: docData })}
-                              />
-                            );
-                          })}
+                          {docs.map((d: any, j: number) => (
+                            <DocumentoWithAnticipos
+                              key={d.documentoventaId ?? j}
+                              d={d}
+                              monedaSimbolo={data.moneda_simbolo}
+                              selectedId={selectedId}
+                              onSelect={onSelect}
+                            />
+                          ))}
                         </div>
                       </>
                     )}
@@ -565,17 +718,15 @@ function ChainView({ data, selectedId, onSelect }: {
           <>
             <CurvedArrow />
             <div className="flex flex-col gap-3">
-              {docs.map((d: any, i: number) => {
-                const docData = { ...d, moneda_simbolo: data.moneda_simbolo };
-                return (
-                  <DocumentoCard
-                    key={d.documentoventaId ?? i}
-                    doc={docData}
-                    isSelected={selectedId === d.documentoventaId}
-                    onClick={() => onSelect({ type: "documento", id: d.documentoventaId, data: docData })}
-                  />
-                );
-              })}
+              {docs.map((d: any, i: number) => (
+                <DocumentoWithAnticipos
+                  key={d.documentoventaId ?? i}
+                  d={d}
+                  monedaSimbolo={data.moneda_simbolo}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                />
+              ))}
             </div>
           </>
         )}
@@ -584,10 +735,11 @@ function ChainView({ data, selectedId, onSelect }: {
   }
 
   return (
-    <DocumentoCard
-      doc={data}
-      isSelected={selectedId === data.documentoventaId}
-      onClick={() => onSelect({ type: "documento", id: data.documentoventaId, data })}
+    <DocumentoWithAnticipos
+      d={data}
+      monedaSimbolo={data.moneda_simbolo}
+      selectedId={selectedId}
+      onSelect={onSelect}
     />
   );
 }

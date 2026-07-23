@@ -1027,7 +1027,7 @@ export default function CrearCotizacionPage() {
                           <td className="p-3 text-right font-mono font-semibold text-slate-800">{formatMoney(calcImporte(d))}</td>
                           <td className="p-3 text-center">
                             {d.afectoInafecto === false
-                              ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                              ? <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                               : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                             }
                           </td>
@@ -1162,7 +1162,7 @@ export default function CrearCotizacionPage() {
                         <td className="p-2 text-center">
                           {nuevoDetalle.bienId
                             ? nuevoDetalle.afectoInafecto === false
-                              ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                              ? <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                               : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                             : <span className="text-slate-300 text-[10px]">—</span>}
                         </td>

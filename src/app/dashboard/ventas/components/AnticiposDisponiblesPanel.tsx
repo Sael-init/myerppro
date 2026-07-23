@@ -18,9 +18,10 @@ import {
 const IGV_PORCENTAJE = 0.18;
 
 // anticipo_saldo_afecto / anticipo_saldo_exonerado son la base SIN IGV (base imponible).
-// El listado (getByEmpresa) puede no traer estas columnas nuevas si el SP aún no fue
-// actualizado — en ese caso se cae a los campos estándar del documento
-// (valorventa_afecto/valorventa_exonerado), que sí vienen siempre.
+// Un anticipo recién creado puede no tener estas columnas calculadas todavía (NULL) — en
+// ese caso NULL significa "nada consumido aún", no "sin saldo", así que se cae al monto
+// ORIGINAL del documento (valorventa_afecto/exonerado). Solo se considera sin saldo cuando
+// el campo viene explícitamente en 0.
 function getGravadoIgvImporte(a: any): { gravado: number; igv: number; exonerado: number; importe: number } {
   const gravado   = a.anticipo_saldo_afecto    ?? a.valorventa_afecto    ?? 0;
   const exonerado = a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0;
@@ -42,6 +43,14 @@ function isoToDisplay(iso?: string): string {
 
 function toIso(date: Date): string {
   return date.toISOString().split("T")[0];
+}
+
+// El backend compara fecha_emision <= fechaFin como DATETIME completo: si se manda solo
+// la fecha (YYYY-MM-DD) la interpreta como medianoche, y excluye documentos emitidos ESE
+// MISMO día en horas posteriores (p.ej. un anticipo registrado hoy a las 13:40). Se manda
+// el fin del día para incluir todo lo emitido hasta "hasta" inclusive.
+function finDelDia(iso: string): string {
+  return `${iso}T23:59:59.999`;
 }
 
 function daysAgo(n: number): string {
@@ -128,7 +137,7 @@ export default function AnticiposDisponiblesPanel({
         {
           clienteIds: [clienteId],
           ...(fechaDesde ? { fechaDesde } : {}),
-          ...(fechaHasta ? { fechaHasta } : {}),
+          ...(fechaHasta ? { fechaHasta: finDelDia(fechaHasta) } : {}),
         }
       );
       const soloAnticipos = (res.data ?? []).filter(
@@ -137,7 +146,22 @@ export default function AnticiposDisponiblesPanel({
           (d.estado ?? "").toUpperCase() !== "ANULADO" &&
           String(d.clienteId) === String(clienteId)
       );
-      setAnticipos(soloAnticipos);
+      // El listado (getByEmpresa) puede traer anticipo_saldo_afecto/exonerado en NULL para
+      // documentos antiguos cuyo SP de listado no calcula esas columnas — aunque el saldo
+      // REAL ya esté en 0 (consumido). Para no confundir "sin dato" con "saldo disponible",
+      // se pide el detalle (getById), que sí trae el saldo real, de cada candidato antes de
+      // decidir si se muestra.
+      const conDetalle = await Promise.all(
+        soloAnticipos.map(async (a: any) => {
+          try {
+            const full = await documentoVentaService.getById(a.documentoventaId);
+            return { ...a, ...full };
+          } catch {
+            return a;
+          }
+        })
+      );
+      setAnticipos(conDetalle);
     } catch (err: any) {
       setError(err.message ?? "Error al cargar los anticipos del cliente");
       setAnticipos([]);
@@ -148,12 +172,13 @@ export default function AnticiposDisponiblesPanel({
 
   useEffect(() => { fetchAnticipos(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Filtro local: saldo mínimo + búsqueda ──────────────────────────────────
-  // Se ocultan anticipos ya prácticamente agotados (saldo afecto y exonerado ambos < 1),
-  // que no aportan un saldo útil para aplicar a una nueva venta.
+  // ── Filtro local: saldo disponible + búsqueda ──────────────────────────────
+  // Se ocultan anticipos sin saldo disponible (afecto y exonerado ambos <= 0 luego del
+  // fallback de getGravadoIgvImporte): deben quedar con saldo/valor > 0 en afecto o
+  // exonerado para aparecer en el panel.
   const anticiposFiltrados = anticipos.filter((a: any) => {
     const { gravado, exonerado } = getGravadoIgvImporte(a);
-    if (gravado < 1 && exonerado < 1) return false;
+    if (gravado <= 0 && exonerado <= 0) return false;
     if (!busqueda.trim()) return true;
     const q = busqueda.toLowerCase();
     return (

@@ -1286,7 +1286,7 @@ function CrearNotaCreditoContent() {
                   <td className="p-3 text-right font-mono font-semibold text-slate-800">{monedaLabel} {(det.importe || 0).toFixed(2)}</td>
                   <td className="p-3 text-center">
                     {det.afectoInafecto === false
-                      ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                      ? <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                       : <span className="text-[10px] font-semibold text-green-600">Afecto</span>}
                   </td>
                   <td className="p-3 text-center">
@@ -1376,7 +1376,7 @@ function CrearNotaCreditoContent() {
                 <td className="p-2 text-center">
                   {(nuevoDetalle as any).bienId
                     ? (nuevoDetalle as any).afectoInafecto === false
-                      ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                      ? <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                       : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                     : <span className="text-slate-300 text-[10px]">—</span>}
                 </td>

@@ -248,7 +248,7 @@ export default function PedidoVentaViewModal({ pedidoventaId, isOpen, onClose }:
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: "Vta. Afecta", value: pv.valorventa_afecto },
-                { label: "Vta. Inafecta", value: pv.valorventa_inafecto },
+                { label: "Vta. Exonerada", value: pv.valorventa_inafecto },
                 { label: "IGV", value: pv.igv },
                 { label: "Total", value: pv.total },
               ].map(({ label, value }) => (

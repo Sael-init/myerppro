@@ -867,23 +867,33 @@ function CrearDocumentoVentaContent() {
   }, [(formData as any).detraccion, (formData as any).detraccionPorcentaje, totales.total]);
 
   // Reparto del anticipo aplicado entre "afecto" (base sin IGV), "IGV" y "exonerado", para
-  // poder descontarlo directamente de esas líneas del resumen en vez de mostrar un único
-  // descuento genérico sobre el total. Se toman los montos reales del propio anticipo
-  // (anticipo_saldo_afecto/igv/anticipo_saldo_exonerado, con fallback a valorventa_*) — NO se
-  // reconstruyen con una fórmula del 18%, porque el saldo disponible no es simplemente el
-  // total con IGV incluido. Se descuenta siempre, sin importar si el detalle de ESTE
-  // documento mezcla ítems gravados y exonerados — la mezcla del detalle no afecta el saldo
-  // real del anticipo que se está consumiendo.
+  // descontarlo directamente de esas líneas del resumen. Espeja al backend
+  // (InsertarDocumentoVentaConValidacionMifact): un anticipo AFECTO solo se consume contra
+  // la parte afecta (+ su IGV) de ESTE documento, y uno EXONERADO solo contra la parte
+  // exonerada — sin traslado entre buckets. Si el anticipo disponible de un tipo excede lo
+  // que este documento necesita en ese tipo, el excedente NO se aplica (queda disponible en
+  // el anticipo para otra venta); no reduce el otro bucket.
   const anticipoSplit = useMemo(() => {
-    const afectoBase = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0), 0);
-    const igv         = anticiposAplicados.reduce((acc, a: any) => acc + (a.igv ?? 0), 0);
-    const exonerado   = anticiposAplicados.reduce((acc, a: any) => acc + (a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0), 0);
-    return {
-      afectoBase: Math.round(afectoBase * 100) / 100,
-      igv:        Math.round(igv * 100) / 100,
-      exonerado:  Math.round(exonerado * 100) / 100,
-    };
-  }, [anticiposAplicados]);
+    const afectoDisponible = anticiposAplicados.reduce((acc, a: any) => {
+      const saldoAfecto = a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0;
+      return saldoAfecto > 0 ? acc + saldoAfecto + (a.igv ?? 0) : acc;
+    }, 0);
+    const exoneradoDisponible = anticiposAplicados.reduce((acc, a: any) => {
+      const saldoAfecto = a.anticipo_saldo_afecto ?? a.valorventa_afecto ?? 0;
+      return saldoAfecto > 0 ? acc : acc + (a.anticipo_saldo_exonerado ?? a.valorventa_exonerado ?? 0);
+    }, 0);
+
+    // Tope: lo consumido nunca puede superar lo que ESTE documento tiene en cada bucket.
+    const pendienteAfecto      = totales.valorventaAfecto + totales.igv;
+    const propBase             = pendienteAfecto > 0 ? totales.valorventaAfecto / pendienteAfecto : 0;
+    const consumidoAfectoTotal = Math.min(afectoDisponible, pendienteAfecto);
+    const afectoBase = Math.round(consumidoAfectoTotal * propBase * 100) / 100;
+    const igv        = Math.round((consumidoAfectoTotal - afectoBase) * 100) / 100;
+
+    const exonerado = Math.round(Math.min(exoneradoDisponible, totales.valorventaExonerado) * 100) / 100;
+
+    return { afectoBase, igv, exonerado };
+  }, [anticiposAplicados, totales]);
 
   // Monto total del anticipo aplicado a este documento (afecto + IGV + exonerado).
   const totalAnticipoAplicado = useMemo(() => {
@@ -907,19 +917,16 @@ function CrearDocumentoVentaContent() {
   // e IGV que realmente quedan por cobrar. El DETALLE (líneas del documento) no se toca — se
   // envía tal cual, con los montos originales de cada ítem.
   //
-  // El anticipo NO se resta bucket-a-bucket (afecto contra afecto, exonerado contra exonerado):
-  // el anticipo se registra con un bien "placeholder" (ANTICIPO AFECTO/EXONERADO) cuyo tipo no
-  // tiene por qué coincidir con el tipo de los bienes de ESTA venta (p.ej. anticipo exonerado
-  // aplicado a una venta 100% gravada). Por eso se neta el TOTAL primero y luego se escala
-  // proporcionalmente afecto/exonerado/igv, así siempre siguen sumando el total neto.
+  // Resta bucket-a-bucket (afecto contra afecto, exonerado contra exonerado), igual que el
+  // backend: anticipoSplit ya viene topado a lo que este documento tiene en cada bucket, así
+  // que la resta nunca da negativo (el Math.max(0, ...) es solo defensivo).
   const totalesNetosAnticipo = useMemo(() => {
-    const factor = totales.total > 0 ? totalFacturaFinal / totales.total : 0;
     return {
-      valorventaAfecto:    Math.round(totales.valorventaAfecto    * factor * 100) / 100,
-      valorventaExonerado: Math.round(totales.valorventaExonerado * factor * 100) / 100,
-      igv:                 Math.round(totales.igv                * factor * 100) / 100,
+      valorventaAfecto:    Math.round(Math.max(0, totales.valorventaAfecto    - anticipoSplit.afectoBase) * 100) / 100,
+      valorventaExonerado: Math.round(Math.max(0, totales.valorventaExonerado - anticipoSplit.exonerado)   * 100) / 100,
+      igv:                 Math.round(Math.max(0, totales.igv                - anticipoSplit.igv)          * 100) / 100,
     };
-  }, [totales, totalFacturaFinal]);
+  }, [totales, anticipoSplit]);
 
   // Campos de encabezado propios de un documento emitido "como anticipo": la base
   // (total_base_anticipo) y el saldo inicial disponible (afecto/exonerado) para
@@ -1469,8 +1476,14 @@ function CrearDocumentoVentaContent() {
             <button
               type="button"
               onClick={() => setModalAnticipos(true)}
-              disabled={isBusy || loading || !(formData as any).clienteId}
-              title={!(formData as any).clienteId ? "Seleccione un cliente primero" : undefined}
+              disabled={isBusy || loading || !(formData as any).clienteId || !!(formData as any).esAnticipo}
+              title={
+                (formData as any).esAnticipo
+                  ? "Este documento está marcado como Anticipo: no puede además importar anticipos"
+                  : !(formData as any).clienteId
+                    ? "Seleccione un cliente primero"
+                    : undefined
+              }
               className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               <IconCashBanknote size={18} className="text-emerald-500" />
@@ -1940,7 +1953,7 @@ function CrearDocumentoVentaContent() {
                   <td className="p-3 text-right font-mono font-semibold text-slate-800">{monedaLabel} {(det.importe || 0).toFixed(2)}</td>
                   <td className="p-3 text-center">
                     {det.afectoInafecto === false ? (
-                      <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                      <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                     ) : (
                       <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                     )}
@@ -2081,7 +2094,7 @@ function CrearDocumentoVentaContent() {
                   <td className="p-2 text-center">
                     {(nuevoDetalle as any).bienId
                       ? (nuevoDetalle as any).afectoInafecto === false
-                        ? <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                        ? <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                         : <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                       : <span className="text-slate-300 text-[10px]">—</span>
                     }

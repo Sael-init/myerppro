@@ -205,7 +205,7 @@ export default function CotizacionViewModal({ cotizacionventaId, isOpen, onClose
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: "Vta. Afecta",   value: cot.valorventaAfecto   },
-                { label: "Vta. Inafecta", value: cot.valorventaInafecto },
+                { label: "Vta. Exonerada", value: cot.valorventaInafecto },
                 { label: "IGV",           value: cot.igv                },
                 { label: "Total",         value: cot.total              },
               ].map(({ label, value }) => (
@@ -298,7 +298,7 @@ export default function CotizacionViewModal({ cotizacionventaId, isOpen, onClose
                         </td>
                         <td className="px-3 py-2 text-center text-xs">
                           {d.afectoInafecto === false ? (
-                            <span className="text-[10px] font-semibold text-amber-600">Inafecto</span>
+                            <span className="text-[10px] font-semibold text-amber-600">Exonerado</span>
                           ) : (
                             <span className="text-[10px] font-semibold text-green-600">Afecto</span>
                           )}
