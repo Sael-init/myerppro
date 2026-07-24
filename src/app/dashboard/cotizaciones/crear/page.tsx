@@ -65,6 +65,25 @@ const calcPrecioTier = (det: ListaPrecioDetalle, cantidad: number): PrecioTierIn
   return { precio: det.precio_minimo_minorista ?? 0, min: det.precio_minimo_minorista ?? 0, tier: "minorista" };
 };
 
+// Determina si una monedaId es soles (PEN / 001 / null)
+const isPenMoneda = (m?: string | null) => !m || m === "001" || m.toUpperCase() === "PEN";
+
+// Convierte un precio desde la moneda de la lista de precios a la moneda del documento.
+// tipoCambio = cuántos PEN vale 1 unidad de moneda extranjera (ej: 3.75 para USD).
+const convertirPrecioLP = (
+  precio: number,
+  monedaLP: string | null | undefined,
+  monedaDoc: string,
+  tipoCambio: number,
+): number => {
+  if (precio <= 0) return precio;
+  const lpEsPen  = isPenMoneda(monedaLP);
+  const docEsPen = isPenMoneda(monedaDoc);
+  if (lpEsPen === docEsPen) return precio;                                              // misma moneda
+  if (lpEsPen && !docEsPen) return Math.round((precio / Math.max(tipoCambio, 0.001)) * 1e6) / 1e6; // PEN → otra
+  return Math.round(precio * tipoCambio * 1e6) / 1e6;                                  // otra → PEN
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TrabajadorDDL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -524,6 +543,31 @@ export default function CrearCotizacionPage() {
     );
   }, [form.condicionPago, condicionesPago, formasPago]);
 
+  // Forma de pago seleccionada y si trae un plazo fijo (ej: "LETRA 120 DIAS")
+  const selectedFormaPago = useMemo(
+    () => formasPago.find((fp: any) => (fp.formaspagoId ?? "") === form.formaspagoId) as any,
+    [formasPago, form.formaspagoId]
+  );
+  const tiempoValidezLocked = !!(
+    selectedFormaPago &&
+    selectedFormaPago.diasFormPago != null &&
+    Number(selectedFormaPago.diasFormPago) > 0
+  );
+
+  const handleFormaPagoChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const formaspagoId = e.target.value;
+      const fp = formasPago.find((f: any) => (f.formaspagoId ?? "") === formaspagoId) as any;
+      const dias = fp?.diasFormPago;
+      setForm((prev) => ({
+        ...prev,
+        formaspagoId,
+        tiempoValidez: dias != null && Number(dias) > 0 ? String(dias) : "",
+      }));
+    },
+    [formasPago]
+  );
+
 
   // ── Auto-calcular fechaVencimiento a partir de tiempoValidez ──────────────
   useEffect(() => {
@@ -846,7 +890,7 @@ export default function CrearCotizacionPage() {
                       <select
                         name="condicionPago"
                         value={form.condicionPago}
-                        onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "", fechaVencimiento: "" }))}
+                        onChange={(e) => setForm((prev) => ({ ...prev, condicionPago: e.target.value, formaspagoId: "", tiempoValidez: "", fechaVencimiento: "" }))}
                         onFocus={refreshCondicionesPago}
                         disabled={isBusy}
                         className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 transition-all"
@@ -865,7 +909,7 @@ export default function CrearCotizacionPage() {
                       <select
                         name="formaspagoId"
                         value={form.formaspagoId}
-                        onChange={handleChange}
+                        onChange={handleFormaPagoChange}
                         onFocus={refreshFormasPago}
                         disabled={isBusy || !form.condicionPago}
                         className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white uppercase disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
@@ -890,10 +934,15 @@ export default function CrearCotizacionPage() {
                         min={1}
                         value={form.tiempoValidez}
                         onChange={handleChange}
-                        disabled={isBusy}
+                        disabled={isBusy || tiempoValidezLocked}
                         placeholder="Ej: 30"
                         className="w-full border border-slate-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-slate-50 disabled:text-slate-400 transition-all"
                       />
+                      {tiempoValidezLocked && (
+                        <p className="text-[10px] text-slate-400 italic ml-1 normal-case">
+                          Definido por la forma de pago seleccionada
+                        </p>
+                      )}
                     </div>
 
                     {/* Fecha Vencimiento — calculada automáticamente */}
@@ -1092,13 +1141,18 @@ export default function CrearCotizacionPage() {
                               const presentacionId = e.target.value;
                               const det = listaPrecioDetalles.find((d) => d.presentacionId === presentacionId);
                               if (det) {
-                                const tierInfo = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+                                const tierInfo   = calcPrecioTier(det, nuevoDetalle.cantidad ?? 1);
+                                const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+                                const monedaDoc  = form.monedaId || "001";
+                                const tipoCambio = Number(form.tipoCambio) || 1;
+                                const precioConv = convertirPrecioLP(tierInfo.precio, monedaLP, monedaDoc, tipoCambio);
+                                const minConv     = convertirPrecioLP(tierInfo.min,    monedaLP, monedaDoc, tipoCambio);
                                 setPrecioTierLabel(tierInfo.tier);
-                                setPrecioLimites({ min: tierInfo.min });
+                                setPrecioLimites({ min: minConv });
                                 setNuevoDetalle((prev) => ({
                                   ...prev,
                                   presentacionId,
-                                  ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                                  ...(precioConv > 0 ? { precio: precioConv } : {}),
                                 }));
                               } else {
                                 setPrecioTierLabel(null);
@@ -1119,13 +1173,18 @@ export default function CrearCotizacionPage() {
                                 ? listaPrecioDetalles.find((d) => d.presentacionId === nuevoDetalle.presentacionId)
                                 : undefined;
                               if (det) {
-                                const tierInfo = calcPrecioTier(det, cantidad);
+                                const tierInfo   = calcPrecioTier(det, cantidad);
+                                const monedaLP   = listasPrecios.find((lp) => lp.listaprecioId === selectedListaId)?.monedaId;
+                                const monedaDoc  = form.monedaId || "001";
+                                const tipoCambio = Number(form.tipoCambio) || 1;
+                                const precioConv = convertirPrecioLP(tierInfo.precio, monedaLP, monedaDoc, tipoCambio);
+                                const minConv     = convertirPrecioLP(tierInfo.min,    monedaLP, monedaDoc, tipoCambio);
                                 setPrecioTierLabel(tierInfo.tier);
-                                setPrecioLimites({ min: tierInfo.min });
+                                setPrecioLimites({ min: minConv });
                                 setNuevoDetalle((prev) => ({
                                   ...prev,
                                   cantidad,
-                                  ...(tierInfo.precio > 0 ? { precio: tierInfo.precio } : {}),
+                                  ...(precioConv > 0 ? { precio: precioConv } : {}),
                                 }));
                               } else {
                                 setNuevoDetalle((prev) => ({ ...prev, cantidad }));

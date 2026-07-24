@@ -35,7 +35,8 @@
       "Bash(node -e ' *)",
       "Bash(node -e \"const icons = require\\('@tabler/icons-react'\\); console.log\\('IconCheck' in icons\\);\")",
       "Bash(grep -n \"const {.*useCrearStore\\\\|guiaForm,\\\\|form,\\\\s*setForm\\\\|} = useCrearStore\" \"c:/Users/salva/Documents/mi-erp-next-main/src/app/dashboard/ventas/crear/d_guia_remision/page.tsx\")",
-      "Bash(xargs grep -lni \"00001399\\\\|ANTAFISH\\\\|ANTICIPO EXO\\\\|ANTICIPO INAFECTO\\\\|ANTICIPO AFECTO\")"
+      "Bash(xargs grep -lni \"00001399\\\\|ANTAFISH\\\\|ANTICIPO EXO\\\\|ANTICIPO INAFECTO\\\\|ANTICIPO AFECTO\")",
+      "Bash(xargs grep -l \"SP_PedidoVenta_GetEmpresa_Optimizado\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\salva\\Documents\\mi-erp-next-main\\src\\app\\dashboard\\ventas\\components"

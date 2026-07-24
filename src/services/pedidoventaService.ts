@@ -1,6 +1,5 @@
 // src/services/pedidoventaService.ts
-
-import apiClient from '../api/apiCliente';
+import apiClient from '@/api/apiCliente';
 import type { PedidoVenta, FiltrosPedidoVenta, PedidoVentaDetalleFull } from '@/types/pedidoventa.type';
 
 class PedidoVentaService {
@@ -36,6 +35,10 @@ class PedidoVentaService {
           params.filtro_TipoEntrega = (filters as any).tipoEntregaId.trim();
         if ((filters as any).estadoAlmacen?.trim())
           params.filtro_EstadoAlmacen = (filters as any).estadoAlmacen.trim();
+
+        // El backend bindea FechaInicio/FechaFin como DateOnly? vía model binding de ASP.NET,
+        // que usa cultura invariante (formato ISO yyyy-MM-dd). No reformatear aquí:
+        // DateInput ya entrega el valor en ISO tal cual lo necesita el backend.
         if (filters.fechaDesde)
           params.fechaInicio = filters.fechaDesde;
         if (filters.fechaHasta)
