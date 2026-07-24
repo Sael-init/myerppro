@@ -425,9 +425,8 @@ export default function ClienteFormModal({
   const [provinciasOptions,    setProvinciasOptions]    = useState<UbigeoOption[]>([]);
   const [distritosOptions,     setDistritosOptions]     = useState<UbigeoOption[]>([]);
 
-  const [direccionesExtras, setDireccionesExtras] = useState<DireccionExtraForm[]>([
-    emptyDireccion(),
-  ]);
+  // ✅ Direcciones adicionales: ahora OPCIONALES → arranca vacío, no con una fila por defecto
+  const [direccionesExtras, setDireccionesExtras] = useState<DireccionExtraForm[]>([]);
   const [empresasAsociadas, setEmpresasAsociadas] = useState<Cliente[]>([]);
 
   // ── Ubigeo picker para direcciones extra ────────────────────────────────
@@ -505,7 +504,8 @@ export default function ClienteFormModal({
         );
       });
     } else {
-      setDireccionesExtras([emptyDireccion()]);
+      // ✅ Sin direcciones extra registradas → arranca vacío (opcional)
+      setDireccionesExtras([]);
     }
     // Cargar empresas vinculadas (representante_legal) si viene del API
     const repLegal = clienteToEdit?.representante_legal;
@@ -735,11 +735,8 @@ export default function ClienteFormModal({
 
   const addDireccion = () => setDireccionesExtras((prev) => [...prev, emptyDireccion()]);
 
+  // ✅ Ahora se puede eliminar libremente, incluida la última fila (son opcionales)
   const removeDireccion = (tempId: string) => {
-    if (direccionesExtras.length <= 1) {
-      toast.error("Debe conservar al menos una dirección adicional");
-      return;
-    }
     setDireccionesExtras((prev) => prev.filter((d) => d._tempId !== tempId));
   };
 
@@ -775,13 +772,16 @@ export default function ClienteFormModal({
   // ── Validación ──────────────────────────────────────────────────────────
 
   const validate = () => {
-    if (!form.descripcion.trim())  return "Descripción/Nombre es obligatorio";
-    if (!form.docidentId.trim())   return "Tipo de documento es obligatorio";
-    if (!form.num_docident.trim()) return "Número de documento es obligatorio";
+    if (!form.descripcion.trim())   return "Descripción/Nombre es obligatorio";
+    if (!form.docidentId.trim())    return "Tipo de documento es obligatorio";
+    if (!form.num_docident.trim())  return "Número de documento es obligatorio";
+    if (!form.tipoclienteId.trim()) return "Tipo de Cliente es obligatorio";
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       return "Email no válido";
+    // ✅ Las direcciones adicionales son opcionales: solo se valida si el usuario
+    // agregó una fila y la dejó sin texto (evita mandar filas vacías al backend)
     if (direccionesExtras.some((d) => !d.direccion.trim()))
-      return "Todas las direcciones adicionales deben tener texto";
+      return "Complete el texto de la dirección adicional o elimínela";
     return null;
   };
 
@@ -800,7 +800,8 @@ export default function ClienteFormModal({
     email:        data.email.trim() || "",
     tipoclienteId: data.tipoclienteId || "",
     sexo:         data.sexo || "",
-    fecha_nac:    data.fecha_nac || "",
+    // backend: fecha_nac es DateTime? — un string vacío rompe la deserialización JSON (solo acepta fecha válida o null)
+    fecha_nac:    data.fecha_nac || undefined,
     estado_civil: data.estado_civil.trim().toUpperCase() || "",
     website:      data.website.trim() || "",
     ubidst:       data.ubidst || "",
@@ -809,11 +810,14 @@ export default function ClienteFormModal({
     Origen:       data.Origen.trim().toUpperCase() || "",
     estado:       data.estado,
     empresaId:    EMPRESA_ID,
-    direccionesExtras: direccionesExtras.map<DireccionExtra>((d) => ({
-      direccion: d.direccion.trim().toUpperCase(),
-      ubidst:    d.ubidst.trim() || null,
-      estado:    true,
-    })),
+    // ✅ Filtro defensivo: solo se envían filas con texto real (por si quedara alguna vacía)
+    direccionesExtras: direccionesExtras
+      .filter((d) => d.direccion.trim())
+      .map<DireccionExtra>((d) => ({
+        direccion: d.direccion.trim().toUpperCase(),
+        ubidst:    d.ubidst.trim() || null,
+        estado:    true,
+      })),
     empresasAsociadasIds: isDNI
       ? empresasAsociadas.map((e) => e.clienteId!).filter(Boolean)
       : [],
@@ -1046,7 +1050,9 @@ export default function ClienteFormModal({
                 {/* ── Direcciones Adicionales ── */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between border-b pb-2">
-                    <h3 className="text-sm font-bold text-slate-600 uppercase">Direcciones Adicionales</h3>
+                    <h3 className="text-sm font-bold text-slate-600 uppercase">
+                      Direcciones Adicionales <span className="text-slate-400 font-normal normal-case">(opcional)</span>
+                    </h3>
                     {!isReadOnly && (
                       <button type="button" onClick={addDireccion}
                         className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
@@ -1055,76 +1061,82 @@ export default function ClienteFormModal({
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    {direccionesExtras.map((dir, idx) => (
-                      <div key={dir._tempId}
-                        className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                  {direccionesExtras.length === 0 ? (
+                    <p className="text-sm text-slate-400 italic border border-dashed border-slate-200 rounded-lg py-5 text-center">
+                      Sin direcciones adicionales. Son opcionales — agrega una si el cliente lo requiere.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {direccionesExtras.map((dir, idx) => (
+                        <div key={dir._tempId}
+                          className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
 
-                        {/* Fila superior: badge + dirección + eliminar */}
-                        <div className="flex items-center gap-2">
-                          <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <input
-                            className="flex-1 border border-slate-200 bg-white p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase disabled:bg-slate-100 disabled:text-slate-400"
-                            placeholder="Dirección (Av. / Jr. / Calle...)"
-                            value={dir.direccion}
-                            onChange={(e) => updateDireccion(dir._tempId, "direccion", e.target.value)}
-                            disabled={isReadOnly}
-                          />
-                          {!isReadOnly && (
-                            <button type="button" onClick={() => removeDireccion(dir._tempId)}
-                              className="flex-shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-                              title="Eliminar dirección">
-                              <IconTrash size={16} />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Fila inferior: ubigeo */}
-                        <div className="flex items-center gap-2 ml-8">
-                          <IconMapPin size={13} className="text-slate-400 shrink-0" />
-                          {dir.ubidst ? (
-                            /* Ubigeo ya seleccionado → chip + botón cambiar */
-                            <div className="flex items-center gap-2 flex-1">
-                              <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
-                                <IconMapPin size={10} />
-                                {dir.ubidstLabel || dir.ubidst}
-                                <span className="font-mono text-blue-400 ml-1">({dir.ubidst})</span>
-                              </span>
-                              {!isReadOnly && (
-                                <>
-                                  <button type="button" onClick={() => openUbigeoPicker(dir._tempId)}
-                                    className="text-xs text-blue-600 hover:text-blue-800 font-bold underline underline-offset-2 transition-colors">
-                                    Cambiar
-                                  </button>
-                                  <button type="button"
-                                    onClick={() => {
-                                      updateDireccion(dir._tempId, "ubidst", "");
-                                      updateDireccion(dir._tempId, "ubidstLabel", "");
-                                    }}
-                                    className="text-red-400 hover:text-red-600 p-0.5 rounded transition-colors">
-                                    <IconX size={13} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            /* Sin ubigeo → botón seleccionar */
-                            !isReadOnly ? (
-                              <button type="button" onClick={() => openUbigeoPicker(dir._tempId)}
-                                className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-dashed border-slate-300 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
-                                <IconMapPin size={12} />
-                                Seleccionar ubigeo (opcional)
+                          {/* Fila superior: badge + dirección + eliminar */}
+                          <div className="flex items-center gap-2">
+                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <input
+                              className="flex-1 border border-slate-200 bg-white p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase disabled:bg-slate-100 disabled:text-slate-400"
+                              placeholder="Dirección (Av. / Jr. / Calle...)"
+                              value={dir.direccion}
+                              onChange={(e) => updateDireccion(dir._tempId, "direccion", e.target.value)}
+                              disabled={isReadOnly}
+                            />
+                            {!isReadOnly && (
+                              <button type="button" onClick={() => removeDireccion(dir._tempId)}
+                                className="flex-shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                                title="Eliminar dirección">
+                                <IconTrash size={16} />
                               </button>
+                            )}
+                          </div>
+
+                          {/* Fila inferior: ubigeo */}
+                          <div className="flex items-center gap-2 ml-8">
+                            <IconMapPin size={13} className="text-slate-400 shrink-0" />
+                            {dir.ubidst ? (
+                              /* Ubigeo ya seleccionado → chip + botón cambiar */
+                              <div className="flex items-center gap-2 flex-1">
+                                <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                                  <IconMapPin size={10} />
+                                  {dir.ubidstLabel || dir.ubidst}
+                                  <span className="font-mono text-blue-400 ml-1">({dir.ubidst})</span>
+                                </span>
+                                {!isReadOnly && (
+                                  <>
+                                    <button type="button" onClick={() => openUbigeoPicker(dir._tempId)}
+                                      className="text-xs text-blue-600 hover:text-blue-800 font-bold underline underline-offset-2 transition-colors">
+                                      Cambiar
+                                    </button>
+                                    <button type="button"
+                                      onClick={() => {
+                                        updateDireccion(dir._tempId, "ubidst", "");
+                                        updateDireccion(dir._tempId, "ubidstLabel", "");
+                                      }}
+                                      className="text-red-400 hover:text-red-600 p-0.5 rounded transition-colors">
+                                      <IconX size={13} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             ) : (
-                              <span className="text-xs text-slate-400 italic">Sin ubigeo</span>
-                            )
-                          )}
+                              /* Sin ubigeo → botón seleccionar */
+                              !isReadOnly ? (
+                                <button type="button" onClick={() => openUbigeoPicker(dir._tempId)}
+                                  className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-dashed border-slate-300 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
+                                  <IconMapPin size={12} />
+                                  Seleccionar ubigeo (opcional)
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">Sin ubigeo</span>
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Empresas Asociadas (solo DNI) ── */}
