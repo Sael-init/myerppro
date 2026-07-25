@@ -598,13 +598,15 @@ function CrearDocumentoVentaContent() {
   }, [(formData as any).tipodoccomercialId]);
 
   const tiposDocFiltrados = useMemo(() => {
-    const todos = catalogs?.tipos_documento_comercial ?? [];
-    if (!clienteDocIdentId) return todos;
+    const sinNotas = (catalogs?.tipos_documento_comercial ?? []).filter(
+      (t) => !["X037", "X038"].includes(t.key?.toString() ?? "")
+    );
+    if (!clienteDocIdentId) return sinNotas;
     const esRUC = clienteDocIdentId === "6" || clienteDocIdentId?.toUpperCase().includes("RUC");
     const esDNI = clienteDocIdentId === "1" || clienteDocIdentId?.toUpperCase().includes("DNI");
-    if (esDNI) return todos.filter((t) => !TIPO_SOLO_RUC.includes(t.key?.toString() ?? ""));
-    if (esRUC) return todos.filter((t) => !TIPO_SOLO_DNI.includes(t.key?.toString() ?? ""));
-    return todos;
+    if (esDNI) return sinNotas.filter((t) => !TIPO_SOLO_RUC.includes(t.key?.toString() ?? ""));
+    if (esRUC) return sinNotas.filter((t) => !TIPO_SOLO_DNI.includes(t.key?.toString() ?? ""));
+    return sinNotas;
   }, [catalogs, clienteDocIdentId]);
 
   const seriesFiltradas = useMemo(() => {
