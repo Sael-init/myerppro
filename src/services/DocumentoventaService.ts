@@ -10,6 +10,7 @@ import type {
   AnularDocumentoResponse,
   NotaCreditoResponse,
   BienOption,
+  ReporteImpresionCompleto,
 } from '@/types/Documentoventa.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +201,16 @@ class DocumentoVentaService {
       return data.data ?? data;
     } catch (err: any) {
       throw new Error(err.response?.data?.message ?? 'Error al cargar el documento de venta');
+    }
+  }
+
+  /** Datos planos (SP) para reimprimir comprobante, boletas masivas asociadas y letra(s) de cambio */
+  async getReporteImpresionCompleto(documentoventaId: string): Promise<ReporteImpresionCompleto> {
+    try {
+      const { data } = await apiClient.get(`${this.base}/reporte-impresion/${documentoventaId}`);
+      return data.data ?? data;
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message ?? 'Error al cargar el reporte de impresión');
     }
   }
 

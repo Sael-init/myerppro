@@ -127,6 +127,13 @@ function ssClear(...keys: string[]) {
   keys.forEach((k) => { try { sessionStorage.removeItem(k); } catch { /* noop */ } });
 }
 
+// Fecha local yyyy-mm-dd (NO usar toISOString: convierte a UTC y en zonas horarias
+// negativas -América- puede adelantar el día, invalidando por error fechas de "hoy").
+function getTodayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // =====================================================
 // CONTEXTO
 // =====================================================
@@ -154,7 +161,7 @@ export function CrearProvider({ children }: { children: ReactNode }) {
 
   // ── Restore desde sessionStorage ─────────────────
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayLocal();
 
     const savedDVenta = ssGet<DVentaFormData | null>(SS_DVENTA, null);
     if (savedDVenta) {
@@ -168,8 +175,9 @@ export function CrearProvider({ children }: { children: ReactNode }) {
 
     const savedGuia = ssGet<GuiaFormData | null>(SS_GUIA, null);
     if (savedGuia) {
-      // Merge con GUIA_INITIAL para incorporar campos nuevos si vienen de sesiones antiguas
-      setGuiaForm({ ...GUIA_INITIAL, ...savedGuia });
+      // Merge con GUIA_INITIAL para incorporar campos nuevos si vienen de sesiones antiguas.
+      // fechaTraslado también se reconstituye si vino vacía de una sesión vieja/incompleta.
+      setGuiaForm({ ...GUIA_INITIAL, ...savedGuia, fechaTraslado: savedGuia.fechaTraslado || today });
     } else {
       setGuiaForm((prev) => ({ ...prev, fechaTraslado: today }));
     }
@@ -200,7 +208,7 @@ export function CrearProvider({ children }: { children: ReactNode }) {
   const setGuiaActiva = useCallback((val: boolean) => _setGuiaActiva(val), []);
 
   const resetAll = useCallback(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayLocal();
     setDVentaForm({ ...DVENTA_INITIAL, fechaEmision: today, fechaDoc: today });
     setDetalles([]);
     setGuiaForm({ ...GUIA_INITIAL, fechaTraslado: today });

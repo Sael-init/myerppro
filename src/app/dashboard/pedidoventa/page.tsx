@@ -17,6 +17,7 @@ import SidebarFiltros from "@/components/filter/FiltrosAvanzados";
 import DateInput from "@/components/forms/DateInput";
 
 import PedidoVentaViewModal from "./components/pedidoventaviewmodal";
+import PrintFormatModal from "@/components/shared/PrintFormatModal";
 
 import {
   IconPlus,
@@ -38,6 +39,7 @@ import {
   IconCalendar,
   IconEye,
   IconPrinter,
+  IconClipboardList,
   IconFileDescription,
   IconRoute,
 } from "@tabler/icons-react";
@@ -644,14 +646,23 @@ export default function PedidoVentaPage() {
 
   // ── Imprimir ──────────────────────────────────────────────────────────────
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [showPrintChooser, setShowPrintChooser] = useState(false);
+  const [printChooserId,   setPrintChooserId]   = useState<string | null>(null);
 
-  const handlePrint = async (row: PedidoVenta) => {
-    if (!row.pedidoventaId || printingId) return;
+  const handlePrint = (row: PedidoVenta) => {
+    if (!row.pedidoventaId) return;
+    setPrintChooserId(row.pedidoventaId);
+    setShowPrintChooser(true);
+  };
+
+  const ejecutarImpresionPedido = async (key: string) => {
+    if (!printChooserId || printingId) return;
+    const tipo = key === "interno" ? "interno" : "estandar";
+    setShowPrintChooser(false);
     try {
-      setPrintingId(row.pedidoventaId);
-      const full    = await pedidoventaService.getById(row.pedidoventaId);
-      const logoUrl = `${window.location.origin}/image/logo.png`;
-      imprimirPedidoVenta(full, logoUrl);
+      setPrintingId(printChooserId);
+      const full = await pedidoventaService.getById(printChooserId);
+      imprimirPedidoVenta(full, tipo);
     } catch {
       toast.error("No se pudo obtener los datos para imprimir");
     } finally {
@@ -989,6 +1000,18 @@ export default function PedidoVentaPage() {
         pedidoventaId={viewPedidoId}
         isOpen={showViewModal}
         onClose={() => { setShowViewModal(false); setViewPedidoId(null); }}
+      />
+
+      {/* ── Modal Imprimir — elegir formato ── */}
+      <PrintFormatModal
+        open={showPrintChooser}
+        onClose={() => setShowPrintChooser(false)}
+        onSelect={ejecutarImpresionPedido}
+        loading={!!printingId}
+        options={[
+          { key: "estandar", label: "Estándar", descripcion: "Para enviar al cliente",         icon: IconPrinter,       color: "sky"  },
+          { key: "interno",  label: "Interno",   descripcion: "Picking en almacén (sin precios)", icon: IconClipboardList, color: "rose" },
+        ]}
       />
 
       {/* ── Modal confirmación simple ── */}

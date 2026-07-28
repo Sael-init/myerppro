@@ -36,10 +36,23 @@
       "Bash(node -e \"const icons = require\\('@tabler/icons-react'\\); console.log\\('IconCheck' in icons\\);\")",
       "Bash(grep -n \"const {.*useCrearStore\\\\|guiaForm,\\\\|form,\\\\s*setForm\\\\|} = useCrearStore\" \"c:/Users/salva/Documents/mi-erp-next-main/src/app/dashboard/ventas/crear/d_guia_remision/page.tsx\")",
       "Bash(xargs grep -lni \"00001399\\\\|ANTAFISH\\\\|ANTICIPO EXO\\\\|ANTICIPO INAFECTO\\\\|ANTICIPO AFECTO\")",
-      "Bash(xargs grep -l \"SP_PedidoVenta_GetEmpresa_Optimizado\")"
+      "Bash(xargs grep -l \"SP_PedidoVenta_GetEmpresa_Optimizado\")",
+      "Bash(cp \"src/app/dashboard/ventas/crear/d_ventas/page.tsx\" \"src/app/dashboard/ventas/crear/page.tsx\" && wc -l \"src/app/dashboard/ventas/crear/page.tsx\")",
+      "Bash(npx eslint *)",
+      "Bash(npx --version)",
+      "Bash(command -v chromium-cli)",
+      "Bash(echo \"exit:$?\")",
+      "Read(//c/Users/salva/.claude/**)",
+      "Bash(where.exe chromium-cli *)",
+      "Bash(timeout 60 bash -c 'until curl -sf http://localhost:3000 >/dev/null 2>&1; do sleep 1; done')",
+      "Bash(curl -sk \"http://localhost:3000/dashboard/ventas/crear\" -o /tmp/crear_page.html -w \"HTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(tail -n 100 /tmp/nextdev.log)",
+      "Bash(grep -o '.\\\\{80\\\\}Guía Remisión.\\\\{80\\\\}' /tmp/crear_page.html)",
+      "Bash(curl -sk \"http://localhost:3000/dashboard/pedidoventa\" -o /tmp/pedido_page.html -w \"HTTP_STATUS:%{http_code}\\\\n\")"
     ],
     "additionalDirectories": [
-      "C:\\Users\\salva\\Documents\\mi-erp-next-main\\src\\app\\dashboard\\ventas\\components"
+      "C:\\Users\\salva\\Documents\\mi-erp-next-main\\src\\app\\dashboard\\ventas\\components",
+      "C:\\Users\\salva\\Documents\\mi-erp-next-main\\src\\app\\dashboard\\ventas\\crear\\d_ventas"
     ]
   }
 }

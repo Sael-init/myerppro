@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import DateInput from "@/components/forms/DateInput";
 import documentoVentaService from "@/services/DocumentoventaService";
 import type { DocumentoVenta } from "@/types/Documentoventa.types";
 import {
@@ -67,30 +68,6 @@ const formatMoney = (val?: number | null, simbolo?: string) => {
   }).format(val);
   return simbolo ? `${simbolo} ${formatted}` : formatted;
 };
-
-// ── DateInput ────────────────────────────────────────────────────────────────
-
-function DateInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-bold text-slate-500 uppercase">{label}</label>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-slate-700 bg-white outline-none focus:ring-2 focus:ring-blue-500 hover:border-slate-300 transition-colors cursor-pointer"
-      />
-    </div>
-  );
-}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -253,8 +230,8 @@ export default function AnticiposDisponiblesPanel({
 
         {/* ── Filtros ── */}
         <div className="flex flex-wrap items-end gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50">
-          <DateInput label="Desde" value={fechaDesde} onChange={setFechaDesde} />
-          <DateInput label="Hasta" value={fechaHasta} onChange={setFechaHasta} />
+          <DateInput label="Desde" name="fechaDesde" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
+          <DateInput label="Hasta" name="fechaHasta" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
 
           <button
             onClick={fetchAnticipos}

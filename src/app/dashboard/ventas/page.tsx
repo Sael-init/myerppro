@@ -6,7 +6,12 @@ import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
 import documentoVentaService from "@/services/DocumentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
-import { generarHtmlBoleta, generarHtmlBoletaInterna } from "@/utils/printDocumentoVenta";
+import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
+import {
+  generarHtmlResumenBoletas,
+  generarHtmlBoletaMasiva,
+  generarHtmlLetra,
+} from "@/utils/printReporteImpresion";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -16,11 +21,12 @@ import DateInput from "@/components/forms/DateInput";
 import DocumentoVentaViewModal from "./components/VentasViewModal";
 import TrazabilidadPanel from "@/components/shared/TrazabilidadPanel";
 import ActionMenu from "@/components/shared/ActionMenu";
+import PrintFormatModal from "@/components/shared/PrintFormatModal";
 
 import {
   IconRefresh, IconSearch, IconFilter,
   IconCalendar, IconUser, IconPlus, IconReceipt,
-  IconPrinter, IconClipboardList, IconX,
+  IconPrinter, IconFileInvoice, IconStack2, IconFileText,
 } from "@tabler/icons-react";
 
 // ─── Helpers estáticos (fuera del componente) ────────────────────────────────
@@ -157,7 +163,7 @@ export default function DocumentosVentaPage() {
   }, []);
 
   const handleEdit = useCallback((id: string) => {
-    router.push(`/dashboard/ventas/crear/d_ventas?editId=${id}`);
+    router.push(`/dashboard/ventas/crear?editId=${id}`);
   }, [router]);
 
   const handleAnular = useCallback((id: string) => {
@@ -216,16 +222,25 @@ export default function DocumentosVentaPage() {
     setShowPrintChooser(true);
   }, []);
 
-  const ejecutarImpresion = useCallback(async (tipo: "estandar" | "interno") => {
+  const ejecutarImpresion = useCallback(async (formato: string) => {
     if (!printChooserDocId) return;
     setShowPrintChooser(false);
     try {
       setLoadingPrint(true);
-      const response = await documentoVentaService.getById(printChooserDocId);
-      const doc      = (response as any)?.data ?? response;
-      const html     = tipo === "estandar"
-        ? generarHtmlBoleta(doc, "")
-        : generarHtmlBoletaInterna(doc);
+      let html: string;
+      if (formato === "estandar") {
+        const response = await documentoVentaService.getById(printChooserDocId);
+        const doc      = (response as any)?.data ?? response;
+        html = generarHtmlBoleta(doc, "");
+      } else {
+        const reporte = await documentoVentaService.getReporteImpresionCompleto(printChooserDocId);
+        html =
+          formato === "resumen_boletas" ? generarHtmlResumenBoletas(reporte.comprobante) :
+          formato === "boleta_masiva"   ? generarHtmlBoletaMasiva(reporte.boletasMasivas) :
+          formato === "letra"           ? generarHtmlLetra(reporte.letra) :
+          "";
+      }
+      if (!html) return;
       const win = window.open("", "_blank", "width=960,height=720");
       if (!win) {
         toast.error("El navegador bloqueó la ventana emergente. Habilita pop-ups para este sitio.");
@@ -397,6 +412,27 @@ export default function DocumentosVentaPage() {
           st.includes("ANULADO")   ? "bg-red-50 text-red-600 border-red-200"          :
           st.includes("PARCIAL")   ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
                                      "bg-slate-100 text-slate-500 border-slate-200";
+        return (
+          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${cl}`}>
+            {st}
+          </span>
+        );
+      },
+    },
+    {
+      header:    "Boleteo",
+      width:     "140px",
+      className: "text-center",
+      render:    (row: DocumentoVenta) => {
+        const st = row.estado_boleteo;
+        if (!st) return <span className="text-slate-300 text-[10px]">—</span>;
+        const stU = st.toUpperCase();
+        const cl =
+          stU.includes("PENDIENTE")  ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+          stU.includes("BOLETEADO")  ? "bg-green-50 text-green-700 border-green-200"    :
+          stU.includes("ANULADO")    ? "bg-red-50 text-red-600 border-red-200"          :
+          stU.includes("PARCIAL")    ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                                        "bg-slate-100 text-slate-500 border-slate-200";
         return (
           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${cl}`}>
             {st}
@@ -605,57 +641,18 @@ export default function DocumentosVentaPage() {
       />
 
       {/* Modal Imprimir — elegir formato */}
-      {showPrintChooser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
-                  <IconPrinter size={20} className="text-sky-600" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-800 text-base">Formato de impresión</h2>
-                  <p className="text-xs text-slate-500">Selecciona cómo imprimir</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPrintChooser(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
-              >
-                <IconX size={16} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => ejecutarImpresion("estandar")}
-                disabled={loadingPrint}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-slate-200
-                           hover:border-sky-400 hover:bg-sky-50 transition-all disabled:opacity-50 group"
-              >
-                <div className="w-10 h-10 rounded-lg bg-slate-100 group-hover:bg-sky-100 flex items-center justify-center transition-colors">
-                  <IconPrinter size={20} className="text-slate-500 group-hover:text-sky-600" />
-                </div>
-                <span className="font-bold text-sm text-slate-700 group-hover:text-sky-700">Estándar</span>
-                <span className="text-[11px] text-slate-400 text-center leading-tight">Para enviar al cliente</span>
-              </button>
-
-              <button
-                onClick={() => ejecutarImpresion("interno")}
-                disabled={loadingPrint}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-slate-200
-                           hover:border-rose-400 hover:bg-rose-50 transition-all disabled:opacity-50 group"
-              >
-                <div className="w-10 h-10 rounded-lg bg-slate-100 group-hover:bg-rose-100 flex items-center justify-center transition-colors">
-                  <IconClipboardList size={20} className="text-slate-500 group-hover:text-rose-600" />
-                </div>
-                <span className="font-bold text-sm text-slate-700 group-hover:text-rose-700">Interno</span>
-                <span className="text-[11px] text-slate-400 text-center leading-tight">Uso interno</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PrintFormatModal
+        open={showPrintChooser}
+        onClose={() => setShowPrintChooser(false)}
+        onSelect={ejecutarImpresion}
+        loading={loadingPrint}
+        options={[
+          { key: "estandar",        label: "Estándar",       descripcion: "Para enviar al cliente",   icon: IconPrinter,      color: "sky"     },
+          { key: "resumen_boletas", label: "Resumen Boletas", descripcion: "Comprobante del documento", icon: IconFileInvoice,  color: "violet"  },
+          { key: "boleta_masiva",   label: "Boleta Masiva",   descripcion: "Boletas generadas en masa", icon: IconStack2,       color: "amber"   },
+          { key: "letra",           label: "Letra",           descripcion: "Letra(s) de cambio",        icon: IconFileText,     color: "emerald" },
+        ]}
+      />
 
       {/* Modal Boleteo */}
       {showBoleteoModal && (

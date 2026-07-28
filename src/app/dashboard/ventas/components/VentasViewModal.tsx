@@ -16,6 +16,7 @@ import {
   IconShieldCheck,
   IconReceipt,
   IconCashBanknote,
+  IconTruck,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { DocumentoVenta } from "@/types/Documentoventa.types";
@@ -360,6 +361,41 @@ export default function DocumentoVentaViewModal({
               )}
             </dl>
           </Section>
+
+          {/* ═══════════════════════════════════════════
+              GUÍA DE REMISIÓN
+             ═══════════════════════════════════════════ */}
+          {documento.guia && (
+            <Section title="Guía de Remisión" icon={IconTruck}>
+              <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <InfoField
+                  label="N° Guía"
+                  value={
+                    documento.guia.serie && documento.guia.correlativo
+                      ? `${documento.guia.serie}-${documento.guia.correlativo}`
+                      : documento.guia.correlativo
+                  }
+                  mono
+                  highlight
+                />
+                {documento.guia.fecha_traslado && (
+                  <InfoField
+                    label="Fecha de Traslado"
+                    value={formatearFecha(documento.guia.fecha_traslado)}
+                  />
+                )}
+                {documento.guia.estado && (
+                  <InfoField label="Estado" value={documento.guia.estado} />
+                )}
+                {documento.guia.estado_documento_sunat && (
+                  <InfoField
+                    label="Estado SUNAT"
+                    value={documento.guia.estado_documento_sunat}
+                  />
+                )}
+              </dl>
+            </Section>
+          )}
 
           {/* ═══════════════════════════════════════════
               TOTALES

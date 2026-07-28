@@ -100,8 +100,7 @@ export default function PedidoVentaViewModal({ pedidoventaId, isOpen, onClose }:
     if (!full || printing) return;
     setPrinting(true);
     try {
-      const logoUrl = `${window.location.origin}/image/logo.png`;
-      imprimirPedidoVenta(full, logoUrl);
+      imprimirPedidoVenta(full);
     } finally {
       setPrinting(false);
     }

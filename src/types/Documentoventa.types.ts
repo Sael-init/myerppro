@@ -174,6 +174,18 @@ export interface DocumentoVenta {
   detalles?: DocumentoVentaDetalle[];
   /** Anticipos aplicados a este documento (resumen: saldo consumido, base e IGV) */
   anticipos?: DocumentoVentaAnticipo[];
+  /** Guía de remisión asociada a este documento, cuando fue emitido junto con una */
+  guia?: DocumentoVentaGuia;
+}
+
+/** Guía de remisión asociada a un documento de venta (resumen embebido en el detalle) */
+export interface DocumentoVentaGuia {
+  guiaremisionId?: string;
+  serie?: string;
+  correlativo?: string;
+  fecha_traslado?: string;
+  estado?: string;
+  estado_documento_sunat?: string;
 }
 
 // =====================================================
@@ -415,4 +427,127 @@ export interface AnularDocumentoResponse {
   estadoSunat?: string;
   codigoSunat?: string;
   descripcionSunat?: string;
+}
+
+// =====================================================
+// REPORTE DE IMPRESIÓN COMPLETO (GET /reporte-impresion/{id})
+// Datos "planos" (joins de SP) para reimprimir comprobante, boletas
+// masivas asociadas y letra(s) de cambio — independientes de getById.
+// =====================================================
+
+export interface ReporteImpresionCabecera {
+  docvta_documentoventaId: string;
+  tipdoc_descripcion?: string;
+  tipdoc_abreviatura?: string;
+  docvta_serie?: string;
+  docvta_numero?: string;
+  docvta_fecha_emision?: string;
+  docvta_fecha_doc?: string;
+  docvta_monedaId?: string;
+  m_descripcion?: string;
+  m_abreviatura?: string;
+  m_simbolomoneda?: string;
+  docvta_tipo_cambio?: number;
+  docvta_clienteId?: string;
+  c_tipoclienteId?: string;
+  c_descripcion?: string;
+  c_docidentId?: string;
+  c_num_docident?: string;
+  c_direccion?: string;
+  docvta_ordencompra_numero?: string;
+  docvta_valorventa_afecto?: number;
+  docvta_valorventa_inafecto?: number;
+  docvta_igv?: number;
+  docvta_total?: number;
+  docvta_saldo?: number;
+  docvta_tipopagoId?: string;
+  tp_descripcion?: string | null;
+  docvta_condicion_pago?: string;
+  docvta_fecha_vencimiento?: string | null;
+  docvta_estado?: string;
+  guiarem_serie?: string;
+  guiarem_correlativo?: string;
+  formpag_descripcion?: string | null;
+  formpag_dias_formpago?: number | null;
+  docvta_total_letras?: string;
+  docvta_observacion?: string;
+  sede_empresaId?: string;
+  emp_razon_social?: string;
+  emp_ruc?: string;
+  emp_direccion_1?: string;
+  emp_telefono_fijo?: string;
+  emp_telefono_fijo2?: string;
+  emp_telefono_movil?: string;
+  emp_telefono_movil2?: string;
+  emp_email?: string;
+  emp_pagina_web?: string;
+  sede_descripcion?: string;
+  sede_direccion?: string;
+  sede_telefono?: string;
+  sede_persona_referencia?: string | null;
+  sede_telefono_referencia?: string;
+  sede_correo_referencia?: string;
+  sede_logo_imagen?: string | null;
+  docvta_motivoelectronicoId?: string | null;
+  motncnd_concepto?: string | null;
+  motncnd_tipodocumento?: string | null;
+  docvtaref_fecha_emision?: string | null;
+  docvtaref_numero?: string | null;
+  docvtaref_serie?: string | null;
+  docvta_valorventa_gratuito?: number | null;
+  docvta_operaciongratuita?: boolean;
+  docvta_tipoopegratuitaId?: string;
+  opgrat_descripcion?: string;
+  docvta_detraccion?: boolean;
+  docvta_detraccion_monto?: number;
+  docvta_detraccion_porcentaje?: number;
+  fechavencimientocuota?: string | null;
+  importecuota?: number | null;
+}
+
+export interface ReporteImpresionDetalle {
+  Ddv_documentoventaId: string;
+  Ddv_bienId: string;
+  B_descripcion?: string;
+  Ddv_presentacionId?: string;
+  P_descripcion?: string;
+  P_cantidad?: number;
+  Ddv_item?: number;
+  Ddv_cantidad?: number;
+  Ddv_precio?: number;
+  Ddv_conversion_total?: number;
+  Ddv_importe?: number;
+  Ddv_afecto_inafecto?: boolean;
+  Ddv_observacion?: string | null;
+  Ddv_saldo_temporal?: number;
+  Ddv_precio_sin_igv?: number;
+  Oi_descripcion?: string;
+  P_unidadmedidaId?: string;
+  Ddv_porcentaje_igv?: number;
+  B_codadmin?: number;
+  B_detraccionbienserviceId?: string;
+  detraccion_descripcion?: string;
+}
+
+export interface ReporteImpresionLetra {
+  correlativo: string;
+  fecha_venta: string;
+  sucursal_departamento: string;
+  importe: number;
+  totalLetras: string;
+  cliente_razonsocial: string;
+  cliente_domicilio: string;
+  cliente_localidad: string;
+  cliente_rucdni: string;
+  moneda: string;
+}
+
+export interface ReporteImpresionCompleto {
+  documentoventaId: string;
+  /** [ cabeceras[], detalles[] ] del propio comprobante */
+  comprobante: [ReporteImpresionCabecera[], ReporteImpresionDetalle[]];
+  /** [ cabeceras[], detalles[] ] de boletas generadas en masa a partir de este documento (vacío si no aplica) */
+  boletasMasivas: [ReporteImpresionCabecera[], ReporteImpresionDetalle[]];
+  /** Letra(s) de cambio asociadas (una por cuota en ventas al crédito) */
+  letra: [ReporteImpresionLetra[]];
 }
