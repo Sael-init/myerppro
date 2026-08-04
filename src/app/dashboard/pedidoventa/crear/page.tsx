@@ -88,10 +88,8 @@ import {
   IconFileDescription,
   IconRefresh,
 } from "@tabler/icons-react";
+import { EMPRESA_ID, TENANT_ID, CUENTA_USUARIO_ID } from "@/config/globals";
 
-const EMPRESA_ID        = "005";
-const TENANT_ID         = "1";
-const CUENTA_USUARIO_ID = "CU0002";
 const LISTA_PRECIO_ID   = "092200000001";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,6 +476,7 @@ export default function CrearPedidoVentaPage() {
   const [selectedListaId,    setSelectedListaId]    = useState<string>(LISTA_PRECIO_ID);
   const [listasPrecios,      setListasPrecios]      = useState<ListaPrecio[]>([]);
   const [listaPrecioDetalles, setListaPrecioDetalles] = useState<ListaPrecioDetalle[]>([]);
+  const [usaListaPrecio,     setUsaListaPrecio]     = useState(true);
   const [showStock,          setShowStock]          = useState(false);
   const [presentacionesNuevo, setPresentacionesNuevo] = useState<{ key: string; value: string; factor: number }[]>([]);
   const [loadingPres,         setLoadingPres]         = useState(false);
@@ -558,6 +557,20 @@ export default function CrearPedidoVentaPage() {
     loadAll();
   }, []);
 
+  // ── Parámetro: ¿la empresa trabaja con lista de precios? ───────────────────
+  useEffect(() => {
+    pedidoventaService
+      .getParametros(EMPRESA_ID)
+      .then((res: any) => {
+        const params: any[] = Array.isArray(res) ? res : res?.data ?? [];
+        const param = params.find((p) =>
+          (p.criterio ?? "").toLowerCase().includes("lista de precio")
+        );
+        if (param) setUsaListaPrecio((param.valor ?? "").trim().toUpperCase() === "SI");
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Carga listas de precios disponibles ──────────────────────────────────
   useEffect(() => {
     const load = async () => {
@@ -593,12 +606,15 @@ export default function CrearPedidoVentaPage() {
 
   // ── Carga detalles de la lista de precios activa ───────────────────────────
   useEffect(() => {
-    if (!selectedListaId) return;
+    if (!selectedListaId || !usaListaPrecio) {
+      setListaPrecioDetalles([]);
+      return;
+    }
     listaPreciosService
       .getById(selectedListaId)
       .then((lp: any) => setListaPrecioDetalles(lp.detalles ?? []))
       .catch(() => {});
-  }, [selectedListaId]);
+  }, [selectedListaId, usaListaPrecio]);
 
   // ── Obtiene dirección principal + extras al cambiar cliente ────────────────
   useEffect(() => {
@@ -1416,7 +1432,7 @@ export default function CrearPedidoVentaPage() {
 
         {/* ── Barra: lista de precios + stock ── */}
         <div className="flex items-center justify-end gap-2 mb-3 -mt-2">
-          {listasPrecios.length > 0 && (
+          {usaListaPrecio && listasPrecios.length > 0 && (
             <select
               value={selectedListaId}
               disabled={isBusy}

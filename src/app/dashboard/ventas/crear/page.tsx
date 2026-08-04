@@ -28,9 +28,11 @@ import monedaService from "@/services/monedaService";
 import listaPreciosService from "@/services/listaprecioService";
 import { presentacionService } from "@/services/presentacionService";
 import cuentaUsuarioService from "@/services/cuentausuarioService";
+import pedidoventaService from "@/services/pedidoventaService";
 import DateInput from "@/components/forms/DateInput";
 import type { ListaPrecio, ListaPrecioDetalle } from "@/types/listaprecio.types";
 import StockDisponible from "@/components/shared/StockDisponible";
+import { EMPRESA_ID, TENANT_ID, CUENTA_USUARIO_ID } from "@/config/globals";
 
 interface PrecioLimites { min: number; max: number; }
 interface PrecioTierInfo { precio: number; min: number; tier: "minorista" | "mayorista" | "distribuidor" | null; }
@@ -117,9 +119,6 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const IGV_PORCENTAJE    = 0.18;
-const EMPRESA_ID        = "005";
-const TENANT_ID         = "1";
-const CUENTA_USUARIO_ID = "CU0002";
 
 const TIPO_SOLO_RUC = ["X028"];
 const TIPO_SOLO_DNI = ["X007", "X077"];
@@ -389,6 +388,7 @@ function CrearDocumentoVentaContent() {
   const [selectedListaId,     setSelectedListaId]     = useState<string>("092200000001");
   const [listasPrecios,       setListasPrecios]       = useState<ListaPrecio[]>([]);
   const [listaPrecioDetalles, setListaPrecioDetalles] = useState<ListaPrecioDetalle[]>([]);
+  const [usaListaPrecio,      setUsaListaPrecio]      = useState(true);
   const [showStock,           setShowStock]           = useState(false);
   const [presentacionesNuevo, setPresentacionesNuevo] = useState<{ key: string; value: string; factor: number }[]>([]);
   const [loadingPres,         setLoadingPres]         = useState(false);
@@ -947,6 +947,20 @@ function CrearDocumentoVentaContent() {
     [catalogs, bienCache]
   );
 
+  // ── Parámetro: ¿la empresa trabaja con lista de precios? ───────────────────
+  useEffect(() => {
+    pedidoventaService
+      .getParametros(EMPRESA_ID)
+      .then((res: any) => {
+        const params: any[] = Array.isArray(res) ? res : res?.data ?? [];
+        const param = params.find((p) =>
+          (p.criterio ?? "").toLowerCase().includes("lista de precio")
+        );
+        if (param) setUsaListaPrecio((param.valor ?? "").trim().toUpperCase() === "SI");
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Carga listas de precios disponibles ──────────────────────────────────
   useEffect(() => {
     const load = async () => {
@@ -978,12 +992,15 @@ function CrearDocumentoVentaContent() {
 
   // ── Carga detalles de la lista de precios activa ───────────────────────────
   useEffect(() => {
-    if (!selectedListaId) return;
+    if (!selectedListaId || !usaListaPrecio) {
+      setListaPrecioDetalles([]);
+      return;
+    }
     listaPreciosService
       .getById(selectedListaId)
       .then((lp: any) => setListaPrecioDetalles(lp.detalles ?? []))
       .catch(() => {});
-  }, [selectedListaId]);
+  }, [selectedListaId, usaListaPrecio]);
 
   // ── Bienes y presentaciones disponibles según lista de precios ─────────────
   const bienesDisponibles = useMemo(() => {
@@ -2110,7 +2127,7 @@ function CrearDocumentoVentaContent() {
         {/* ── Barra: lista de precios + stock ── */}
         {!isPedidoLocked && !isReadOnly && (
           <div className="flex items-center justify-end gap-2 mb-3">
-            {listasPrecios.length > 0 && (
+            {usaListaPrecio && listasPrecios.length > 0 && (
               <select
                 value={selectedListaId}
                 disabled={loadingCat}

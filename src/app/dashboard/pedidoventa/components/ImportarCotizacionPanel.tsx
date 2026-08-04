@@ -12,6 +12,7 @@ import {
   IconAlertCircle,
   IconInbox,
 } from "@tabler/icons-react";
+import { EMPRESA_ID } from "@/config/globals";
 
 // ── Helpers de fecha ─────────────────────────────────────────────────────────
 
@@ -63,8 +64,6 @@ interface Props {
   onClose:    () => void;
   onImportar: (cotizacion: Cotizacion) => void;
 }
-
-const EMPRESA_ID = "005";
 
 const fmt = (n?: number | null, sym?: string) => {
   if (n == null) return "—";

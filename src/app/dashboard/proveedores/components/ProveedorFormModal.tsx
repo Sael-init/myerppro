@@ -8,6 +8,7 @@ import ExternalSearchInput, { type SearchType } from "@/components/forms/Externa
 import { IconDeviceFloppy, IconX, IconLoader } from "@tabler/icons-react";
 import { toast } from "sonner";
 import type { Proveedor, FormDropdowns, UbigeoOption } from "../../../../types/proveedores.types";
+import { EMPRESA_ID, TENANT_ID as GLOBAL_TENANT_ID } from "@/config/globals";
 
 interface Props {
   isOpen: boolean;
@@ -151,8 +152,7 @@ export default function ProveedorFormModal({
   proveedorToEdit,
   onSuccess,
 }: Props) {
-  const TENANT_ID = 1;
-  const EMPRESA_ID = "005";
+  const TENANT_ID = Number(GLOBAL_TENANT_ID);
 
   const [catalogs, setCatalogs] = useState<FormDropdowns | null>(null);
   const [loading, setLoading] = useState(false);

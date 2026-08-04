@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import cotizacionService     from "@/services/cotizacionService";
+import pedidoventaService    from "@/services/pedidoventaService";
 import trabajadorService     from "@/services/trabajadorService";
 import condicionPagoService  from "@/services/condicionpagoService";
 import formasPagoService     from "@/services/formaspagoService";
@@ -50,10 +51,8 @@ import {
   IconX,
   IconEraser,
 } from "@tabler/icons-react";
+import { EMPRESA_ID, TENANT_ID, CUENTA_USUARIO_ID } from "@/config/globals";
 
-const EMPRESA_ID        = "005";
-const TENANT_ID         = "1";
-const CUENTA_USUARIO_ID = "CU0002";
 const LISTA_PRECIO_ID   = "092200000001";
 
 interface PrecioTierInfo { precio: number; min: number; tier: "minorista" | "mayorista" | "distribuidor" | null; }
@@ -315,6 +314,7 @@ export default function CrearCotizacionPage() {
   const [selectedListaId,     setSelectedListaId]     = useState<string>(LISTA_PRECIO_ID);
   const [listasPrecios,       setListasPrecios]       = useState<ListaPrecio[]>([]);
   const [listaPrecioDetalles, setListaPrecioDetalles] = useState<ListaPrecioDetalle[]>([]);
+  const [usaListaPrecio,      setUsaListaPrecio]      = useState(true);
 
   const [form, setForm] = useState({
     clienteId:        "",
@@ -373,6 +373,20 @@ export default function CrearCotizacionPage() {
     loadAll();
   }, []);
 
+  // ── Parámetro: ¿la empresa trabaja con lista de precios? ───────────────────
+  useEffect(() => {
+    pedidoventaService
+      .getParametros(EMPRESA_ID)
+      .then((res: any) => {
+        const params: any[] = Array.isArray(res) ? res : res?.data ?? [];
+        const param = params.find((p) =>
+          (p.criterio ?? "").toLowerCase().includes("lista de precio")
+        );
+        if (param) setUsaListaPrecio((param.valor ?? "").trim().toUpperCase() === "SI");
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Carga listas de precios disponibles ──────────────────────────────────
   useEffect(() => {
     const load = async () => {
@@ -407,12 +421,15 @@ export default function CrearCotizacionPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedListaId) return;
+    if (!selectedListaId || !usaListaPrecio) {
+      setListaPrecioDetalles([]);
+      return;
+    }
     listaPreciosService
       .getById(selectedListaId)
       .then((res) => setListaPrecioDetalles(res.detalles ?? []))
       .catch(() => setListaPrecioDetalles([]));
-  }, [selectedListaId]);
+  }, [selectedListaId, usaListaPrecio]);
 
   // ── Carga datos para edición ───────────────────────────────────────────────
   useEffect(() => {
@@ -1004,7 +1021,7 @@ export default function CrearCotizacionPage() {
                     <span className="text-blue-600"><IconListDetails size={16} /></span>
                     <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Detalle de Ítems</h3>
                   </div>
-                  {listasPrecios.length > 0 && (
+                  {usaListaPrecio && listasPrecios.length > 0 && (
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase">Lista de Precios:</span>
                       <select

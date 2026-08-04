@@ -14,6 +14,7 @@ import SidebarFiltros from "@/components/filter/FiltrosAvanzados";
 import DateInput from "@/components/forms/DateInput";
 import DocumentoVentaViewModal from "@/app/dashboard/ventas/components/VentasViewModal";
 import ActionMenu from "@/components/shared/ActionMenu";
+import { EMPRESA_ID } from "@/config/globals";
 
 import {
   IconRefresh, IconSearch, IconFilter,
@@ -21,8 +22,6 @@ import {
 } from "@tabler/icons-react";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
-
-const EMPRESA_ID = "005";
 
 // Siempre fijo — no se puede quitar
 const LOCKED_TIPOS_DOC = ["X037", "X067"];

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCrud } from "@/hooks/useCrud";
 import { useDebounce } from "@/hooks/useDebounce";
+import { EMPRESA_ID } from "@/config/globals";
 import documentoVentaService from "@/services/DocumentoventaService";
 import { DocumentoVenta, FiltrosDocumentoVenta } from "@/types/Documentoventa.types";
 import { generarHtmlBoleta } from "@/utils/printDocumentoVenta";
@@ -100,8 +101,6 @@ function fmtMoneda(monto: number, abrev = "PEN"): string {
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
-
-const EMPRESA_ID = "005";
 
 export default function DocumentosVentaPage() {
   const router = useRouter();

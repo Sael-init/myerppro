@@ -17,8 +17,7 @@ import cotizacionService from '@/services/cotizacionService';
 import apiClient from '@/api/apiCliente';
 import SearchableSelect from '@/components/forms/SearchableSelect';
 import DateInput from '@/components/forms/DateInput';
-
-const EMPRESA_ID = '005';
+import { EMPRESA_ID, TENANT_ID } from '@/config/globals';
 
 type ReportType =
     | 'ventas-administrativo'
@@ -179,7 +178,7 @@ export default function ReportesVentasPage() {
         // Cargar puntos de venta con sedeId desde el raw API
         setLoadingPv(true);
         apiClient
-            .get('/DocumentoVenta/form-dropdowns', { params: { empresaId: EMPRESA_ID, tenantId: '1' } })
+            .get('/DocumentoVenta/form-dropdowns', { params: { empresaId: EMPRESA_ID, tenantId: TENANT_ID } })
             .then(({ data }) => {
                 if (!alive) return;
                 const payload  = data?.value ?? data;

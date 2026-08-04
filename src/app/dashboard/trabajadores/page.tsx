@@ -27,9 +27,9 @@ import {
   IconFilter,
   IconUserCircle,
 } from "@tabler/icons-react";
+import { EMPRESA_ID } from "@/config/globals";
 
 export default function TrabajadoresPage() {
-  const EMPRESA_ID = "005";
 
   const initialFilters: FiltrosTrabajador = {
     docidentIds: [],

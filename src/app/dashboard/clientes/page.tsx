@@ -21,9 +21,9 @@ import {
   IconUserCircle,
   IconMapPin,
 } from "@tabler/icons-react";
+import { TENANT_ID } from "@/config/globals";
 
 export default function ClientesPage() {
-  const TENANT_ID = "1";
 
   const initialFilters: FiltrosCliente = {
     docidentIds: [],

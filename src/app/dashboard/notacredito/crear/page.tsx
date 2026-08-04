@@ -57,10 +57,9 @@ import {
   IconFileDescription,
   IconListDetails,
 } from "@tabler/icons-react";
+import { EMPRESA_ID, TENANT_ID } from "@/config/globals";
 
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPRESA_ID  = "005";
-const TENANT_ID   = "1";
 const DEFAULT_TIPO = "X037";
 
 const TIPOS_NC_ND: Record<string, string> = {

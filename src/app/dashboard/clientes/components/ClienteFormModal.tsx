@@ -15,6 +15,7 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import clienteService from "@/services/clienteService";
+import { EMPRESA_ID } from "@/config/globals";
 import type {
   Cliente,
   DireccionExtra,
@@ -415,7 +416,6 @@ export default function ClienteFormModal({
   clienteToEdit,
   tenantId,
 }: Props) {
-  const EMPRESA_ID = "005";
   const [loading,   setLoading]   = useState(false);
   const [catalogs,  setCatalogs]  = useState<FormDropdowns | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("datos");

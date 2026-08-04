@@ -23,9 +23,9 @@ import {
   IconMail,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import { TENANT_ID } from "@/config/globals";
 
 export default function ProveedoresPage() {
-  const TENANT_ID = "1";
 
   const initialFilters: FiltrosProveedor = {
     docidentIds: [],

@@ -45,9 +45,7 @@ import {
 } from "@tabler/icons-react";
 import TrazabilidadPanel from "@/components/shared/TrazabilidadPanel";
 import { toast } from "sonner";
-
-const EMPRESA_ID        = "005";
-const CUENTA_USUARIO_ID = "CU0001";
+import { EMPRESA_ID, CUENTA_USUARIO_ID } from "@/config/globals";
 
 const fmt = (n?: number | null) =>
   n !== undefined && n !== null

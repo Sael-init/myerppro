@@ -37,8 +37,7 @@ import {
   IconCheck,
   IconAlertTriangle,
 } from "@tabler/icons-react";
-
-const EMPRESA_ID = "005";
+import { EMPRESA_ID } from "@/config/globals";
 
 // ── Helpers de UI ─────────────────────────────────────────────────────────────
 const SectionHeader = ({ icon, title }: { icon: React.ReactNode; title: string }) => (

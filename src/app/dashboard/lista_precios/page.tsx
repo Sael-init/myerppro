@@ -25,8 +25,7 @@ import {
   IconPrinter,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
-
-const EMPRESA_ID = "005";
+import { EMPRESA_ID } from "@/config/globals";
 
 // ── Estado badge ─────────────────────────────────────────────────────────────
 const estadoConfig: Record<string, { label: string; className: string }> = {
